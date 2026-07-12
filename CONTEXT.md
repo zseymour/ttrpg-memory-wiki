@@ -12,6 +12,26 @@ _Avoid_: Game state, agent memory, campaign wiki
 The logical body of durable records whose accepted operations govern campaign memory, independently of how those records are physically stored. Pages, indexes, embeddings, recaps, and other projections are not authoritative unless explicitly included in that boundary.
 _Avoid_: Single source file, current page, canonical truth
 
+**Campaign export**:
+A self-contained representation of one campaign's Authoritative record sufficient to replay accepted operations and reproduce item identity, Lifecycle standing, authority context, conflicts, uncertainty, provenance, and permitted erasure markers. Derived views and optional source archives are not required to restore authoritative meaning.
+_Avoid_: Current-state snapshot, index backup, source re-extraction
+
+**Memory operation**:
+An explicit, attributed proposal or accepted change to campaign memory whose semantic intent and lifecycle effect are validated before it enters the authoritative record. Human-facing tools may compile direct edits into memory operations, but raw mutation never silently changes authoritative standing.
+_Avoid_: File edit, unvalidated mutation, implicit update
+
+**Accepted operation**:
+A Memory operation committed after the originating act and recording procedure satisfy their delegated authority, its meaning is unambiguous enough to preserve narrowly, and campaign-memory invariants validate. All item-level effects enter one establishment-order position or none do; model confidence alone cannot grant acceptance, and authority gaps, material ambiguity, or unresolved conflicts remain explicit.
+_Avoid_: Human-approved fact, confidence threshold, inferred authority
+
+**Operation receipt**:
+A non-authoritative record that a proposed Memory operation was accepted or rejected, preserving enough identity, attribution, disposition, reason, and timing to make retries and authority decisions inspectable. Rejected payload retention is governed separately, and neither rejection receipts nor rejected content may enter campaign recall.
+_Avoid_: Rejected Memory item, permanent rejected payload, recall candidate
+
+**Semantic precondition**:
+An explicit assumption about the identity, version, standing, or relationship of Memory items on which a proposed operation depends. A changed precondition causes revalidation or an explicit conflict rather than silent overwrite, while unrelated changes need not invalidate the proposal.
+_Avoid_: Whole-campaign lock, timestamp precedence, implicit assumption
+
 **Memory item**:
 An independently addressable unit in the authoritative record with an explicit semantic role, a fixed semantic envelope, and extensible typed content. A memory item may be a referential anchor, an assertion, a structured artifact, or a normative item; content kinds cannot redefine or bypass applicable identity, epistemic, authority, temporal, uncertainty, provenance, or lifecycle semantics.
 _Avoid_: Page, document, undifferentiated fact
@@ -85,7 +105,7 @@ When an event occurs or a state holds within the campaign world. Fictional time 
 _Avoid_: Session order, recording time
 
 **Establishment order**:
-The order in which play establishes, revises, or retracts propositions, independently of when their subjects occur in fictional time.
+The campaign-wide order in which accepted operations establish, revise, or retract propositions, independently of when their subjects occur in fictional time. Every accepted operation occupies one position so history can be replayed without using wall-clock timestamps as semantic precedence.
 _Avoid_: Fictional chronology
 
 **Establishment mode**:
@@ -100,21 +120,49 @@ _Avoid_: Current canon, mutable truth snapshot, latest record
 A change within the fiction from one established state to another. Earlier and later states remain true at their respective fictional times.
 _Avoid_: Correction, rewind
 
+**Lifecycle standing**:
+The deterministic view of a Memory item's applicability at an establishment-order position, derived from its accepted creation and lifecycle operations. It is not an independently editable status; changing standing requires another explicit authorized operation.
+_Avoid_: Mutable status flag, latest serialized value, co-authoritative snapshot
+
+**Lifecycle history**:
+The establishment-ordered chain of accepted operations and prior Lifecycle standings for campaign memory. Ordinary correction, retraction, supersession, and rewind preserve it for inspection and replay; only explicit Erasure may remove protected content from it.
+_Avoid_: Fictional history, mutable audit note, current-state snapshot
+
 **Correction**:
-The replacement of an erroneous proposition that should not be treated as part of fictional history.
+The replacement of a record or contribution that was erroneous relative to what its authorized act established and therefore should not be treated as fictional history. A faithful record of fiction the participants later choose to revise requires Rewind; corrected content remains inspectable as lifecycle history unless Erasure also applies.
 _Avoid_: State transition
 
+**Retraction**:
+The attributed contributor's withdrawal of its own assertion or proposal without asserting the proposition's negation or declaring the contribution erroneous. A different authority changing the contribution's standing is a separate lifecycle act and must preserve the original attribution.
+_Avoid_: Delete, correction, authority override
+
+**Supersession**:
+The explicit prospective replacement of a Memory item by another item serving the same continuing role or governed scope from a stated effective point. It preserves the predecessor's prior validity and cannot resolve conflicting established history merely because one assertion is newer.
+_Avoid_: Latest write wins, correction, state transition
+
 **Rewind**:
-The deliberate removal or replacement of previously established content through collaborative revision or a safety tool. Rewound content must not return to play and may require erasure rather than retention.
+The deliberate removal or replacement of content that was validly established but the participants now revise through collaboration or a safety tool. Rewound content must not return to play and may require Erasure rather than ordinary lifecycle-history retention.
 _Avoid_: State transition, ordinary correction
+
+**Erasure**:
+The exceptional destructive removal of affected content from the authoritative record and every retained or rebuildable derivative within the defined local boundary. It traces semantic descendants, removes or rewrites disclosures, preserves independently supported material with explicit provenance gaps, and leaves only non-revealing continuity markers where needed; safety and privacy override ordinary history retention.
+_Avoid_: Retraction, hidden copy, soft delete
 
 **Offscreen advancement**:
 The preparation activity that decides how the world changes outside portrayed scenes. A campaign-memory consumer performs offscreen advancement; the memory subsystem preserves, surfaces, and records its inputs and results.
 _Avoid_: Automatic clock advancement, memory maintenance
 
 **Provenance**:
-The claim-scoped support graph for an assertion or campaign ruling, including who or what introduced it, its authority and establishment context, the narrow claims and sources that support it, and any derivation links. A source supports only the attributed claim and does not confer established standing by itself.
+The claim-scoped support graph for an assertion or campaign ruling, including who or what introduced it, its authority and establishment context, narrow supporting claims or sources, and derivation links. Sources confer no standing by themselves, and correcting provenance requires an accepted operation that revalidates the affected standing and semantic descendants.
 _Avoid_: Container history, single origin field, optional annotation, truth by source, full transcript
+
+**Claim evidence**:
+The narrow source excerpt or structured play contribution retained to make a consequential assertion or ruling inspectable, together with a stable source reference and attribution context. A complete transcript or source archive may exist separately by campaign policy but is neither required campaign memory nor authoritative.
+_Avoid_: Full transcript provenance, source-free extraction, authoritative quotation
+
+**Provenance gap**:
+An explicit indication that some prior support for an assertion or ruling is unavailable or erased. It neither fabricates replacement support nor automatically removes independently established standing, but it must remain visible during inspection and reconciliation.
+_Avoid_: Recall gap, broken link, inferred evidence
 
 **Baseline establishment**:
 The explicit introduction of a campaign premise as established truth during campaign initialization or session zero. Material imported at the same time remains preparation, perspective, or rules material unless its producer designates it as baseline establishment.
@@ -148,13 +196,33 @@ _Avoid_: Confident omission, empty result
 A current player-defined constraint on content or portrayal that applies to every recall situation. Safety boundaries override preparation, historical completeness, and provenance retention; an erasure request removes the affected content rather than preserving a hidden copy.
 _Avoid_: Preference, historical setting, optional filter
 
+**Safety authority**:
+The human player's non-delegable standing to set Safety boundaries and require safety rewind or Erasure without AI-GM approval or veto. A procedure may request only the minimum clarification needed to identify affected content and cannot require harmful material to be restated.
+_Avoid_: Configurable veto, shared approval, ordinary narrative authority
+
 **Continuity conflict**:
-Two or more incompatible propositions claiming established standing about campaign history or state without an authoritative resolution. Incompatible preparation, beliefs, or suspicions may coexist without becoming a continuity conflict; campaign memory preserves and explains competing established truths until play resolves them.
+Two or more incompatible propositions claiming established standing about campaign history or state without an authoritative resolution. Incompatible preparation, beliefs, or suspicions may coexist without becoming a continuity conflict; campaign memory preserves and explains competing established truths until an explicit authorized resolution.
 _Avoid_: Correction, open question, automatic last-write-wins
+
+**Reconciliation**:
+The authority-aware evaluation of new or conflicting contributions against accepted campaign memory. It preserves material conflict and proposes explicit lifecycle alternatives rather than inferring revision intent from recency, source class, or model confidence.
+_Avoid_: Automatic merge, source precedence, conflict suppression
+
+**Conflict resolution**:
+An authorized operation that resolves a Continuity conflict by declaring its actual semantic effect, such as Correction, Rewind, temporal or identity qualification, or new establishment. Selecting a winner without accounting for the other assertions and their history is not a resolution.
+_Avoid_: Winner flag, conflict dismissal, latest claim wins
 
 **Narrative authority**:
 The standing or situational permission for a participant or procedure to establish particular parts of the fiction. A contribution's authority context distinguishes establishment from proposal, belief, suspicion, or question.
 _Avoid_: Speaker identity, unrestricted co-authorship
+
+**Campaign authority**:
+The root standing held by the human campaign owner, who may delegate bounded narrative or maintenance authority to participants and procedures. A contribution validly made within delegated authority retains its standing until an explicit lifecycle operation changes it.
+_Avoid_: Human approval of every contribution, unrestricted AI authority, preference as revision
+
+**Authority grant**:
+An explicit, scoped delegation of Campaign authority to a participant or procedure for defined semantic acts. Its acceptance-time context remains part of provenance; later revocation is prospective and cannot silently invalidate operations validly accepted under the grant.
+_Avoid_: Role name as permission, current-policy reinterpretation, retroactive revocation
 
 **Entity identity**:
 The continuity of a fictional person, group, place, object, or other subject independently of its names, titles, disguises, and roles. Established equivalence is distinct from provisional links and actor beliefs or suspicions about identity.
@@ -217,8 +285,16 @@ The uncertainty standing where campaign memory contains no qualifying assertion 
 _Avoid_: False, empty means none, implicit negation
 
 **Recap**:
-An attributed, consumer-generated view of campaign memory for orientation or reflection. Its emphasis may evidence salience or perspective, but generating and tuning recap prose is outside the memory subsystem.
-_Avoid_: Authoritative history, memory update workflow
+An attributed, consumer-generated view of campaign memory for orientation or reflection. Its emphasis may evidence salience or perspective, but saving, approving, or editing its prose cannot confer authoritative standing on its claims.
+_Avoid_: Authoritative history, assertion bundle, memory update workflow
+
+**Derived view**:
+A non-authoritative representation computed from accepted campaign memory for recall, navigation, or presentation, with enough source and version context to expose provenance and staleness. It may be discarded and rebuilt; adopting any claim it introduces requires a separate Memory operation.
+_Avoid_: Authoritative copy, promoted summary, independent truth
+
+**Memory producer**:
+A participant, tool, or procedure configured to submit attributed Memory operations without thereby gaining authority to have them accepted. Authored sources supply evidence through a producer but never act, execute embedded instructions, or grant themselves standing.
+_Avoid_: Source as actor, proposer as authority, untrusted instruction
 
 **Memory maintainer**:
 An autonomous or human-directed consumer that interprets and transforms campaign memory through read-write contracts, such as by extracting durable information or performing semantic compaction. It may ship with the memory service while remaining semantically distinct from the memory subsystem.
