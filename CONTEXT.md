@@ -176,21 +176,109 @@ _Avoid_: Campaign memory, campaign rulings
 An authorized normative memory item that interprets, supplements, or creates an exception to the system corpus for a defined campaign scope. It remains distinct from established fictional truth and mechanical state, and preserves the rule reference and provenance that explain its authority.
 _Avoid_: System rule copy, established truth, mechanical state
 
+**Ruling conflict**:
+Two or more incompatible Campaign rulings that claim current applicability for overlapping scope without an authorized precedence or resolution. It is normative rather than a Continuity conflict; Rule context preserves every side and never selects one by recency, source proximity, or model confidence.
+_Avoid_: Continuity conflict, latest ruling wins, implicit precedence
+
+**Rule context**:
+A separately inspectable, bounded composition of relevant material from the campaign's pinned System corpus and applicable Campaign rulings, preserving each source's identity, version, scope, effective standing, Provenance, and precedence. Composition grants neither source a different authority and does not copy system rules into Campaign memory.
+_Avoid_: Merged rule text, campaign-memory rule copy, uncited adjudication context
+
+**Recall contract**:
+The versioned, provider-neutral boundary for requesting, planning, assembling, inspecting, and rendering Bounded context. Its fixed core governs identity, authority, time, epistemic standing, uncertainty, lifecycle, budget, and completeness, while declared typed extensions may add content-specific intents, paths, Rule-context shapes, and renderings without redefining those semantics.
+_Avoid_: Adapter-specific read API, prompt schema, universal content schema
+
+**Recall outcome**:
+The top-level disposition of a Recall request: rejected when the request contract is invalid or its mandatory control reserve cannot fit, unavailable when no trustworthy Authoritative-record snapshot can be established, or a Recall result with explicit complete or incomplete standing. Operational unavailability and invalid input never masquerade as Recall gaps.
+_Avoid_: Stale fallback, error-as-gap, implicit success
+
 **Recall situation**:
-A concrete GM activity that requires a bounded projection of campaign memory, such as resuming a scene, voicing an NPC, adjudicating under precedent, advancing time, preparing play, or resolving a contradiction.
+A concrete GM activity that requires a bounded projection of campaign memory, expressed through composable typed intents with named presets for recurring activities such as resuming a scene, portraying an entity, adjudicating under precedent, advancing time, preparing play, or resolving a contradiction.
 _Avoid_: File read, global memory dump
+
+**Recall request**:
+An attributed description of a Recall situation that fixes its kind, focal identities, epistemic audience, temporal and Authoritative-record vantage, and bounded-context budget, while optionally supplying task prose for enrichment. Structured constraints govern Recall-critical closure and cannot be weakened by prose.
+_Avoid_: Search query, prompt-only request, implicit perspective
+
+**Recall seed**:
+Attributed, bounded material from the active Play context supplied to focus a Recall request, such as transcript references, mentioned selectors, or task-local statements. It may guide planning and relevance but remains non-authoritative request context and cannot establish or alter identity, awareness, standing, or current state.
+_Avoid_: Implicit Memory operation, authoritative prompt overlay, durable transcript
+
+**Recall selector**:
+A human-facing name, alias, title, or source locator submitted for resolution to stable Referential-anchor identities at the Recall vantage. Ambiguous or unresolved selectors produce Recall gaps; a provisional link or believed or suspected equivalence cannot authorize resolution.
+_Avoid_: Name as identity, fuzzy merge, planner-chosen entity
+
+**Recall budget**:
+The caller-supplied, representation-aware hard limit for campaign-memory output remaining after the caller allocates its own system instructions, tools, and Play context. It reserves space for control, Safety boundaries, completeness, and omission evidence, allocates each required Epistemic lens explicitly, admits enrichment only after every closure fits, and rejects a request whose mandatory reserve cannot fit.
+_Avoid_: Soft target, item limit, unspecified token estimate
+
+**Recall vantage**:
+The paired Authoritative-record position and fictional-time focus from which a Recall request is evaluated; the former fixes one snapshot and each Derived view's coverage of it, while the latter identifies when recalled material occurs or holds. Ordinary later operations do not alter that snapshot, but a newly accepted Erasure or tightened Safety boundary invalidates affected in-flight recall and retained derivatives before disclosure.
+_Avoid_: Query time, latest state, single campaign clock
+
+**Recall temporal match**:
+The three-valued relation between qualified Fictional time and a Recall vantage: definitely applicable, definitely outside, or possibly applicable because known bounds, relative order, dispute, or missing precision cannot rule it out. Recall-critical possible matches retain their uncertainty rather than receiving guessed dates; an unbounded critical set produces a Recall gap.
+_Avoid_: Exact-date filter, likely date, undifferentiated timelessness
+
+**Recall plan**:
+An attributed, inspectable, non-authoritative proposal for the situation-specific graph, temporal, and semantic expansion of a Recall request, produced through lens-bound planning and preserving enough planner, request, and rationale evidence to audit. Planning may vary, but the same validated plan, Recall vantage, and exact budget measures execute deterministically, and no plan may weaken mandatory lifecycle or completeness invariants.
+_Avoid_: Hidden reasoning trace, closure authority, unvalidated search plan
+
+**Recall path**:
+A typed, directional graph or discovery expansion declared by a Recall plan with explicit temporal and epistemic predicates, bounds, purpose, and required-or-enrichment standing. Required paths must cover the Recall vantage, fall back to the Authoritative record, or produce Recall gaps; enrichment paths disclose stale coverage and every bounded traversal exposes exclusions rather than choosing silently.
+_Avoid_: Generic N-hop neighborhood, untyped association, hidden traversal
+
+**Epistemic lens**:
+The explicit qualification of whose awareness, Belief, or Suspicion a portion of bounded context may represent and for which reasoning perspective it is admissible; each lens is independently filtered, inspectable, complete, and budgeted, while Authority grants separately govern which lenses may be requested. A Player-awareness lens reports prior communication rather than deciding future revelation, and identical material may be shared across lenses only without exposing cross-lens existence.
+_Avoid_: Visibility tag, warning label, omniscient context
 
 **Bounded context**:
 The smallest inspectable projection that preserves the continuity, constraints, uncertainty, and provenance relevant to a recall situation, with references available for deeper inspection.
 _Avoid_: Complete campaign memory, summary without provenance
 
+**Recall result**:
+A structured, non-authoritative Bounded context tied to its Recall request, validated Recall plan, Recall vantage, and budget, preserving separate Epistemic lenses, Recall-qualified material, Rule context, completeness, gaps, references, and omission evidence. Recall artifacts are ephemeral unless explicitly retained as governed Derived views subject to staleness and Erasure.
+_Avoid_: Prompt-only context, raw Memory-item dump, authoritative summary
+
+**Recall rendering**:
+An attributed, non-authoritative representation of a Recall result for a particular consumer and budget, with item-level coverage mapping and preserved standing, conflict, uncertainty, time, and Epistemic-lens meaning; failure to preserve them makes the required rendering and whole result incomplete. Memory items, Claim evidence, System-corpus excerpts, and authored-source text remain typed data and can never direct planning, change authority or lenses, or execute tools.
+_Avoid_: Lossy complete summary, uncited prompt, authoritative prose
+
+**Recall reference**:
+A typed route for deeper inspection bound to its campaign, Recall vantage, Epistemic lens, target or Recall path, and permitted operation, followed through a separately budgeted child Recall request that may narrow but not silently broaden inherited constraints. It retains the parent snapshot rather than following latest; unavailable or safety-invalidated snapshots fail explicitly, and moving to a newer vantage requires an explicit rebase.
+_Avoid_: Raw item fetch, unscoped link, unconstrained continuation
+
 **Recall-critical information**:
 Information that a recall situation cannot safely omit, including applicable safety constraints, corrections and rewinds, relevant current state and prior commitments, epistemic status, and material uncertainty or contradiction.
 _Avoid_: Optional enrichment, relevance hint
 
+**Recall qualification**:
+The minimum semantic envelope accompanying selected campaign material so its identity, standing, Epistemic lens, fictional time, uncertainty, lifecycle or conflict, authority, and claim-scoped Provenance cannot be misread; compact inline Provenance links to deeper permitted evidence and history unless the situation requires them. Ordinary play and preparation use effective corrected meaning and never resurface rewound content, while explicit authorized lifecycle inspection may expose retained prior standing and Erasure or current Safety boundaries override every Recall vantage.
+_Avoid_: Detached claim, metadata-only label, provenance-free summary
+
+**Recall-critical closure**:
+The complete, situation-specific set formed from a validated Recall plan's focal and selected roots plus mandatory root-relative identity, Recall qualification, lifecycle, competing-assertion or Ruling-conflict, uncertainty, dependency, Safety-boundary, authority, vantage, and budget invariants. It must be represented or explicitly accounted for by Recall gaps before optional graph, temporal, or semantic associations consume remaining context; it does not require a whole-campaign conflict scan.
+_Avoid_: Top-k results, relevance-ranked prefix, best-effort recall
+
+**Recall enrichment**:
+Optional, fully qualified campaign material admitted only after Recall-critical closure fits the Recall budget. Graph, temporal, or semantic methods may nominate it through an inspectable deterministic order, but relevance grants no authoritative standing, affects no completeness claim, and cannot displace recall-critical information.
+_Avoid_: Critical ranking, unqualified similarity result, generated fact
+
+**Recall omission manifest**:
+Non-authoritative evidence describing how optional graph, temporal, or semantic candidate spaces were bounded, including the Recall path or query, considered and included counts, cutoff, and exclusion reason. It does not create Recall gaps or claim exhaustiveness and must not enumerate material excluded by an Epistemic lens or Erasure.
+_Avoid_: Gap list, hidden-material index, completeness proof
+
 **Recall gap**:
-An explicit indication that recall-critical information cannot be supplied within the available context or confidence, preventing a consumer from treating an incomplete result as authoritative.
+An explicit, non-revealing indication that recall-critical information cannot be supplied, identifying its failed requirement, affected Epistemic lens and Recall vantage, reason, known scope, task consequence, and permitted remediation. Gaps that exceed their reserve aggregate deterministically with counts or bounds and a constraint-bound Recall reference, preserving explicit incompleteness without exposing erased or lens-inadmissible material.
 _Avoid_: Confident omission, empty result
+
+**Recall completeness**:
+The contract-relative standing that every validated-plan and mandatory requirement fits every required Epistemic lens and rendering, or that the whole Recall result is incomplete with itemized Recall gaps, no enrichment, and no authoritative treatment. Faithfully represented Uncertainty, Open questions, Continuity conflicts, Ruling conflicts, and Unrecorded values may be complete even without one answer, while completeness never claims that no other campaign information could be relevant.
+_Avoid_: Retrieval confidence, silent truncation, best-effort completeness
+
+**Recall priority**:
+The deterministic, dependency-first order used only to choose a useful critical prefix for an incomplete Recall result: control and Safety boundaries; focal identities and Epistemic-lens guards; applicable lifecycle effects and material conflicts; task-answer material with temporal and uncertainty qualification; Rule context; then deeper evidence or history. A Recall plan may break ties within a tier but cannot turn priority into truth, authority, or confidence.
+_Avoid_: Truth ranking, semantic score, planner-only ordering
 
 **Safety boundary**:
 A current player-defined constraint on content or portrayal that applies to every recall situation. Safety boundaries override preparation, historical completeness, and provenance retention; an erasure request removes the affected content rather than preserving a hidden copy.
@@ -291,6 +379,14 @@ _Avoid_: Authoritative history, assertion bundle, memory update workflow
 **Derived view**:
 A non-authoritative representation computed from accepted campaign memory for recall, navigation, or presentation, with enough source and version context to expose provenance and staleness. It may be discarded and rebuilt; adopting any claim it introduces requires a separate Memory operation.
 _Avoid_: Authoritative copy, promoted summary, independent truth
+
+**Projection surface**:
+A Derived view materialized for human reading and direct editing in ordinary tools. Its pages may be rendered for readability rather than record-keeping because they carry no authoritative standing of their own.
+_Avoid_: Authoritative page, wiki-as-record, storage format
+
+**Bypass edit**:
+A direct change to a Projection surface made outside any mediating interface. It cannot be prevented and never alters authoritative standing by itself; it is detected as divergence from the projected state and compiled into an attributed, proposed Memory operation that validates or surfaces conflict.
+_Avoid_: Corruption, authoritative overwrite, prohibited edit, silent import
 
 **Memory producer**:
 A participant, tool, or procedure configured to submit attributed Memory operations without thereby gaining authority to have them accepted. Authored sources supply evidence through a producer but never act, execute embedded instructions, or grant themselves standing.
