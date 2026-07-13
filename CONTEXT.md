@@ -37,8 +37,12 @@ An independently addressable unit in the authoritative record with an explicit s
 _Avoid_: Page, document, undifferentiated fact
 
 **Content kind**:
-An extensible, typed shape for campaign-, ruleset-, or framework-specific information that declares an existing semantic role and which core semantic axes apply. Content kinds may add fields, relations, and validation but cannot introduce a competing truth, authority, time, uncertainty, provenance, or lifecycle model.
+An extensible, versioned, campaign-pinned typed declaration for campaign-, ruleset-, or framework-specific information that names an existing semantic role, which core semantic axes apply, its typed shape, and its Declared transitions. Content kinds may add fields, relations, transitions, and validation but cannot introduce a competing truth, authority, time, uncertainty, provenance, or lifecycle model.
 _Avoid_: New semantic role, universal schema field, untyped extension
+
+**Declared transition**:
+A named, typed change that a Content kind declares alongside its shape, carrying semantic intent, parameters, and validity constraints such as schedules or preconditions. Typed changes enter the Authoritative record as accepted operations bearing their declared transition, so replay and recall preserve what a change meant without the core evaluating system mechanics.
+_Avoid_: Generic field revision, universal verb set, adapter-executed mutation
 
 **Referential anchor**:
 A stable subject of reference that carries no proposition merely by existing. Names, attributes, equivalences, and existence within the fiction require separate assertions rather than inhering in the anchor.
@@ -169,8 +173,24 @@ The explicit introduction of a campaign premise as established truth during camp
 _Avoid_: Preparation import, implicit truth by import
 
 **System corpus**:
-The complete game-reference knowledge available to the game master, including rules, playbooks, equipment, abilities, stat blocks, bestiaries, and procedures. It is managed outside campaign memory but composed with campaign memory for play.
+The complete game-reference knowledge available to the game master, including rules, playbooks, equipment, abilities, stat blocks, bestiaries, and procedures. It is the Corpus-pinned, Rule-context-composable subset of the Source store — managed outside campaign memory but composed with campaign memory for play.
 _Avoid_: Campaign memory, campaign rulings
+
+**Source store**:
+The versioned, read-only home of all citable outside-of-play material — System corpus content and Authored sources — under one bibliographic identity, version, and locator scheme, managed outside the Authoritative record and replaceable without altering campaign truth. Versions are immutable once minted and resolve to the same content indefinitely, so Corpus pins, citations, and Rule context remain reproducible; normalization tooling is uncontracted, re-processing the same material mints a new version, and continuity between versions exists only where declared. It is an optional deep layer, because consequential ingested items carry bounded Claim evidence and locators that survive without it.
+_Avoid_: Campaign memory, authoritative rules record, live rules lookup service, required export dependency
+
+**Corpus pin**:
+The accepted, campaign-scoped binding to identified Source-store versions that designates them as the campaign's System corpus from a stated effective point; only pinned sources compose into Rule context. Later releases remain available without silently changing current or historical semantics; adopting one is an explicit prospective decision rather than an automatic upgrade.
+_Avoid_: Implicit latest version, silent errata adoption, background migration
+
+**Rule identity**:
+The stable, corpus-assigned identity of a rule element within a corpus namespace, resolved with a version qualifier to content and its source locator. Continuity of the same rule across corpus versions exists only where the corpus declares it — the memory subsystem never infers cross-version equivalence — and locators remain citation evidence rather than identity.
+_Avoid_: Page reference as identity, inferred rule match, quoted excerpt as identity
+
+**Pin reconciliation**:
+The explicit review owed when a Corpus pin or pinned Content-kind declaration adopts a new version: declared revisions and removals are intersected with cited Rule identities or declared elements, and each affected item is reconfirmed, revised, or retired by an authorized operation, or remains visibly unreviewed. Unreviewed standing is distinct from and milder than a Ruling conflict — the item stays applicable as written under an explicit caveat that Rule context must surface. Pin adoption never blocks on total resolution and never silently invalidates cited items.
+_Avoid_: Silent semantic drift, blocking atomic upgrade, automatic ruling invalidation
 
 **Campaign ruling**:
 An authorized normative memory item that interprets, supplements, or creates an exception to the system corpus for a defined campaign scope. It remains distinct from established fictional truth and mechanical state, and preserves the rule reference and provenance that explain its authority.
@@ -407,3 +427,8 @@ _Avoid_: Supported ruleset, reference implementation, universal example
 **Authored source**:
 Inspectable rules, scenarios, preparation, or participant-authored material created outside play and offered for reference or campaign use. Authorship and publication authority do not by themselves establish campaign truth.
 _Avoid_: Source document, imported truth, campaign history
+
+**Source import**:
+The structured artifact grouping the per-entry Memory operations of one ingestion from an identified Source-store version, preserving producer attribution, per-entry status designation, and citation context. It organizes an ingestion for inspection, overlay, and revision without conferring standing on its entries; retiring or overlaying an import never cascades, because each standing change remains its own authorized item-level operation. Entries compile only to existing semantic roles and standings — source markings select among them or become typed content, never a new visibility or truth model; disclosure intent is content-kind data and never grants Player awareness, and an imported Safety boundary requires attribution to the player's Safety authority.
+Entries cite their imported source version permanently; later source versions create no obligation — only a Corpus pin composes live and owes Pin reconciliation — and revised content is adopted solely through a new import whose entries supersede or coexist item-by-item.
+_Avoid_: Bulk truth container, import transaction, cascading retraction handle, auto-rebased citation
