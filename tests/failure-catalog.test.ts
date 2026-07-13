@@ -9,7 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Campaign, lensKey, operationId, reviveExport } from "../src/index.ts";
-import { aid, anchor, assertClaim, establishAnchor, newCampaign } from "./helpers.ts";
+import { aid, anchor, assertClaim, assertEquivalence, establishAnchor, newCampaign } from "./helpers.ts";
 
 describe("failure catalog", () => {
   test("[last-write-wins] a contradicting establishment does not overwrite; it conflicts", () => {
@@ -100,5 +100,24 @@ describe("failure catalog", () => {
     const out = c.recall({ situation: "x", focal: [anchor("e")], lenses: [{ kind: "player-awareness" }], vantage: { establishmentPos: c.head(), fictionalTime: 10 }, budget: { total: 1 } });
     if (out.kind !== "result") throw new Error("expected result");
     for (const g of out.result.gaps) expect(JSON.stringify(g)).not.toContain("LEAK");
+  });
+
+  test("[merge-on-alias] an asserted equivalence links two anchors without merging their records", () => {
+    const c = newCampaign("player");
+    establishAnchor(c, "player", "a", "Anchor A");
+    establishAnchor(c, "player", "b", "Anchor B");
+    assertClaim(c, { actor: "player", stance: "establishment", subject: "a", attribute: "note", value: "A-ONLY", fictionalTime: 1 });
+    assertClaim(c, { actor: "player", stance: "establishment", subject: "b", attribute: "note", value: "B-ONLY", fictionalTime: 1 });
+    assertEquivalence(c, { actor: "player", stance: "establishment", a: "a", b: "b", fictionalTime: 2 });
+    // both anchors and both distinct notes survive as separate records
+    const st = c.state();
+    expect(st.anchors.size).toBe(2);
+    const ra = c.recall({ situation: "x", focal: [anchor("a")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: c.head(), fictionalTime: 10 }, budget: { total: 50 } });
+    if (ra.kind !== "result") throw new Error("expected result");
+    expect(ra.result.lenses["establishment"]!.some((i) => i.value === "A-ONLY")).toBe(true);
+    // the other anchor's value is NOT merged into this one
+    expect(JSON.stringify(ra.result.lenses)).not.toContain("B-ONLY");
+    // the equivalence is surfaced as its own relation, naming both anchors
+    expect(ra.result.equivalences).toHaveLength(1);
   });
 });

@@ -11,19 +11,24 @@ import {
   assertionIdAt,
   conflictIdOf,
   type AnchorId,
+  type ArtifactId,
   type AssertionId,
   type ConflictId,
   type GrantId,
+  type RulingId,
 } from "./ids.ts";
-import type {
-  Act,
-  EstablishmentMode,
-  Operation,
-  Proposition,
-  Provenance,
-  SafetyBoundary,
-  Stance,
-  Uncertainty,
+import {
+  isEquivalence,
+  type Act,
+  type AnchorRole,
+  type ArtifactLink,
+  type EstablishmentMode,
+  type Operation,
+  type Proposition,
+  type Provenance,
+  type SafetyBoundary,
+  type Stance,
+  type Uncertainty,
 } from "./operations.ts";
 
 /** An accepted operation and the establishment-order position it occupies. */
@@ -53,6 +58,10 @@ export interface AssertionRecord {
   effectiveValue: string;
   /** Prior values retained as lifecycle history (correction is inspectable). */
   priorValues: { pos: number; value: string }[];
+  /** The preparation assertion this establishment realized, if any (linked back). */
+  realizes: AssertionId | null;
+  /** Establishments that realized this (preparation) assertion; unused detail stays provisional. */
+  realizedBy: AssertionId[];
   erased: boolean;
 }
 
@@ -71,9 +80,40 @@ export interface GrantRecord {
   revoked: boolean;
 }
 
+/** A structured artifact: identity organizing related material without asserting it true. */
+export interface ArtifactRecord {
+  id: ArtifactId;
+  pos: number;
+  actor: string;
+  /** The content kind, e.g. "thread" or "open-question". */
+  kind: string;
+  label: string;
+  /** Links to organized material; a link confers no standing on its target. */
+  links: ArtifactLink[];
+  /** Claim-scoped provenance: who organized the artifact and its narrow support. */
+  provenance: Provenance;
+  standing: Standing;
+  standingReason: string | null;
+}
+
+/** A normative item (campaign ruling): governs adjudication for a scope, not fictional truth. */
+export interface RulingRecord {
+  id: RulingId;
+  pos: number;
+  actor: string;
+  scope: string;
+  text: string;
+  ruleRef: string | null;
+  /** Referential anchors within the ruling's scope, for scoped recall. */
+  anchors: AnchorId[];
+  provenance: Provenance;
+  standing: Standing;
+  standingReason: string | null;
+}
+
 export interface CampaignState {
   head: number;
-  anchors: Map<AnchorId, { label: string; pos: number }>;
+  anchors: Map<AnchorId, { label: string; pos: number; role: AnchorRole }>;
   /** Insertion order is establishment order. */
   assertions: Map<AssertionId, AssertionRecord>;
   conflicts: Map<ConflictId, ContinuityConflict>;
@@ -81,6 +121,10 @@ export interface CampaignState {
   grants: Map<GrantId, GrantRecord>;
   /** Index of active establishment assertions by slot, for O(slot) conflict detection. */
   establishmentBySlot: Map<string, Set<AssertionId>>;
+  /** Structured artifacts, keyed by their stable id. */
+  artifacts: Map<ArtifactId, ArtifactRecord>;
+  /** Normative items (campaign rulings), keyed by their stable id. */
+  rulings: Map<RulingId, RulingRecord>;
 }
 
 const slotOf = (p: Proposition): string => `${p.subject}::${p.attribute}`;
@@ -94,6 +138,8 @@ export function emptyState(): CampaignState {
     safety: new Map(),
     grants: new Map(),
     establishmentBySlot: new Map(),
+    artifacts: new Map(),
+    rulings: new Map(),
   };
 }
 
@@ -108,16 +154,20 @@ export function apply(st: CampaignState, { op, pos }: Accepted): void {
   st.head = pos;
   switch (op.kind) {
     case "establish-anchor":
-      st.anchors.set(op.anchor, { label: op.label, pos });
+      st.anchors.set(op.anchor, { label: op.label, pos, role: op.role ?? "entity" });
       return;
     case "assert": {
-      addAssertion(st, pos, op.actor, op.stance, op.proposition, {
+      const rec = addAssertion(st, pos, op.actor, op.stance, op.proposition, {
         holder: op.holder ?? null,
         fictionalTime: op.fictionalTime,
         mode: op.mode,
         uncertainty: op.uncertainty ?? { kind: "certain" },
         provenance: op.provenance ?? { introducedBy: op.actor },
+        realizes: op.realizes,
       });
+      // Realization links the new establishment back to the preparation it realized;
+      // the preparation is untouched, so unused prepared detail stays provisional.
+      if (op.realizes) st.assertions.get(op.realizes)?.realizedBy.push(rec.id);
       return;
     }
     case "correct": {
@@ -137,9 +187,15 @@ export function apply(st: CampaignState, { op, pos }: Accepted): void {
       return;
     }
     case "retract": {
-      const target = st.assertions.get(op.target);
-      if (!target) return;
-      deactivate(st, target, "retracted", `retracted by ${op.actor} at ${pos}`);
+      // A retraction may withdraw an assertion, a structured artifact, or a ruling.
+      const item = retractableAt(st, op.target);
+      if (!item) return;
+      if ("stance" in item) {
+        deactivate(st, item, "retracted", `retracted by ${op.actor} at ${pos}`);
+      } else {
+        item.standing = "retracted";
+        item.standingReason = `retracted by ${op.actor} at ${pos}`;
+      }
       return;
     }
     case "supersede": {
@@ -190,6 +246,39 @@ export function apply(st: CampaignState, { op, pos }: Accepted): void {
       if (g) g.revoked = true;
       return;
     }
+    case "establish-artifact": {
+      st.artifacts.set(op.artifact, {
+        id: op.artifact,
+        pos,
+        actor: op.actor,
+        kind: op.artifactKind,
+        label: op.label,
+        links: [...(op.links ?? [])],
+        provenance: op.provenance ?? { introducedBy: op.actor },
+        standing: "active",
+        standingReason: null,
+      });
+      return;
+    }
+    case "link-artifact": {
+      st.artifacts.get(op.artifact)?.links.push(op.link);
+      return;
+    }
+    case "establish-ruling": {
+      st.rulings.set(op.ruling, {
+        id: op.ruling,
+        pos,
+        actor: op.actor,
+        scope: op.scope,
+        text: op.text,
+        ruleRef: op.ruleRef ?? null,
+        anchors: [...(op.anchors ?? [])],
+        provenance: op.provenance ?? { introducedBy: op.actor },
+        standing: "active",
+        standingReason: null,
+      });
+      return;
+    }
   }
 }
 
@@ -199,6 +288,7 @@ interface AssertionInit {
   mode: EstablishmentMode | undefined;
   uncertainty: Uncertainty;
   provenance: Provenance;
+  realizes?: AssertionId;
 }
 
 /** Move an assertion out of active standing, updating the establishment slot index. */
@@ -231,10 +321,14 @@ function addAssertion(
     standingReason: null,
     effectiveValue: proposition.value,
     priorValues: [],
+    realizes: init.realizes ?? null,
+    realizedBy: [],
     erased: false,
   };
   st.assertions.set(rec.id, rec);
-  if (stance === "establishment") {
+  // Identity-equivalence assertions are multi-valued (an anchor may be equivalent to
+  // several) and symmetric, so they are never single-valued continuity conflicts.
+  if (stance === "establishment" && !isEquivalence(proposition)) {
     const slot = slotOf(proposition);
     let active = st.establishmentBySlot.get(slot);
     if (!active) {
@@ -364,4 +458,20 @@ export function grantedActs(st: CampaignState, grant: GrantId | undefined): Set<
   const g = st.grants.get(grant);
   if (!g || g.revoked) return new Set();
   return g.acts;
+}
+
+/**
+ * Resolve a retract target across the three retractable stores (assertion, artifact,
+ * ruling). Their id spaces are disjoint, so at most one store holds the target; a
+ * single lookup keeps validation and application from drifting.
+ */
+export function retractableAt(
+  st: CampaignState,
+  target: AssertionId | ArtifactId | RulingId,
+): AssertionRecord | ArtifactRecord | RulingRecord | undefined {
+  return (
+    st.assertions.get(target as AssertionId) ??
+    st.artifacts.get(target as ArtifactId) ??
+    st.rulings.get(target as RulingId)
+  );
 }

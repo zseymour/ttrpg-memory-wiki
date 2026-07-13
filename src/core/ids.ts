@@ -27,10 +27,18 @@ export type GrantId = Brand<string, "Grant">;
 /** A surfaced continuity conflict awaiting authorized resolution. */
 export type ConflictId = Brand<string, "Conflict">;
 
+/** A structured artifact: identity organizing related material without asserting it. */
+export type ArtifactId = Brand<string, "Artifact">;
+
+/** A normative item (campaign ruling) governing adjudication for a defined scope. */
+export type RulingId = Brand<string, "Ruling">;
+
 export const campaignId = (s: string): CampaignId => s as CampaignId;
 export const anchorId = (s: string): AnchorId => s as AnchorId;
 export const operationId = (s: string): OperationId => s as OperationId;
 export const grantId = (s: string): GrantId => s as GrantId;
+export const artifactId = (s: string): ArtifactId => s as ArtifactId;
+export const rulingId = (s: string): RulingId => s as RulingId;
 
 /** Assertion id for the operation accepted at establishment-order position `pos`. */
 export const assertionIdAt = (pos: number): AssertionId => `a${pos}` as AssertionId;

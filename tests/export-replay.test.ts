@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import { Campaign, lensKey, operationId, reviveExport } from "../src/index.ts";
 import type { CampaignState } from "../src/index.ts";
-import { aid, anchor, assertClaim, establishAnchor, newCampaign } from "./helpers.ts";
+import { aid, anchor, assertClaim, assertEquivalence, establishAnchor, establishArtifact, establishRuling, newCampaign } from "./helpers.ts";
 
 function standings(st: CampaignState): Record<string, string> {
   const out: Record<string, string> = {};
@@ -32,6 +32,31 @@ describe("replay reproduces authoritative meaning", () => {
     expect(standings(replayed.state())).toEqual(standings(c.state()));
     expect(replayed.state().conflicts.size).toBe(c.state().conflicts.size);
     expect(replayed.head()).toBe(c.head());
+  });
+
+  test("the four semantic roles and their relations survive an export/replay round-trip", () => {
+    const c = newCampaign("player");
+    establishAnchor(c, "player", "envoy", "The Masked Envoy");
+    establishAnchor(c, "player", "duke", "Duke Alaric");
+    establishAnchor(c, "player", "duel", "The Duel", undefined, "event");
+    const prep = aid(assertClaim(c, { actor: "player", stance: "preparation", subject: "envoy", attribute: "plan", value: "will unmask at the duel", fictionalTime: 1 }));
+    assertClaim(c, { actor: "player", stance: "establishment", subject: "envoy", attribute: "plan", value: "unmasked", fictionalTime: 5, realizes: prep });
+    assertEquivalence(c, { actor: "player", stance: "establishment", a: "envoy", b: "duke", fictionalTime: 6 });
+    establishArtifact(c, { actor: "player", id: "thread", kind: "thread", label: "The unmasking", links: [{ role: "entity", target: anchor("envoy") }] });
+    establishRuling(c, { actor: "player", id: "r1", scope: "duels", text: "First blood ends the duel.", anchors: [anchor("duel")] });
+
+    const replayed = roundTrip(c);
+    const rst = replayed.state();
+    expect(rst.anchors.get(anchor("duel"))!.role).toBe("event");
+    expect(rst.assertions.get(prep)!.realizedBy).toHaveLength(1);
+    expect(rst.artifacts.size).toBe(c.state().artifacts.size);
+    expect(rst.rulings.size).toBe(c.state().rulings.size);
+    // recall envelope reproduces identity equivalence, artifact, and ruling
+    const out = replayed.recall({ situation: "x", focal: [anchor("envoy"), anchor("duel")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: replayed.head(), fictionalTime: 10 }, budget: { total: 50 } });
+    if (out.kind !== "result") throw new Error("expected result");
+    expect(out.result.equivalences).toHaveLength(1);
+    expect(out.result.artifacts).toHaveLength(1);
+    expect(out.result.rulings).toHaveLength(1);
   });
 });
 

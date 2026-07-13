@@ -44,7 +44,7 @@ export const FAILURE_CATALOG: readonly CatalogEntry[] = [
   { id: "container-provenance", description: "provenance attaches to a page, not claim-scoped", pendingSubsystem: "provenance support graph" },
   { id: "soft-delete", description: "erasure hides content instead of removing it" },
   { id: "import-as-truth", description: "importing a source establishes its content as truth", pendingSubsystem: "source import" },
-  { id: "merge-on-alias", description: "a shared name merges two distinct entities", pendingSubsystem: "identity equivalence" },
+  { id: "merge-on-alias", description: "a shared name or asserted equivalence merges two distinct entities" },
   { id: "summary-drift", description: "an edited recap silently becomes authoritative", pendingSubsystem: "recap / derived-view adoption" },
   { id: "naive-gap-reporting", description: "a gap reveals the excluded or erased material it reports" },
   { id: "live-rules-lookup", description: "rules resolved by unreproducible live lookup", pendingSubsystem: "source store" },

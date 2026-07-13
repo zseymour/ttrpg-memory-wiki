@@ -7,8 +7,9 @@
  * receipts or surfaced conflicts — never silent overwrites.
  */
 
-import { requiredAct, type Operation } from "./operations.ts";
-import { grantedActs, type CampaignState } from "./state.ts";
+import { isEquivalence, requiredAct, type Operation } from "./operations.ts";
+import type { AnchorId, ArtifactId, AssertionId, RulingId } from "./ids.ts";
+import { grantedActs, retractableAt, type CampaignState } from "./state.ts";
 
 export interface Rejection {
   code: string;
@@ -78,10 +79,30 @@ function checkInvariants(st: CampaignState, op: Operation): Rejection | null {
       if (perspectival && op.holder && !st.anchors.has(op.holder)) {
         return { code: "identity", message: `holder anchor ${op.holder} is not established` };
       }
+      if (isEquivalence(op.proposition)) {
+        // Equivalence claims two anchors denote the same entity: both must exist and differ.
+        // Records are never merged, so the two anchors stay independently addressable.
+        const other = op.proposition.value as AnchorId;
+        if (!st.anchors.has(other)) {
+          return { code: "identity", message: `identity-equivalence names anchor ${other}, which is not established` };
+        }
+        if (other === op.proposition.subject) {
+          return { code: "identity", message: "identity-equivalence requires two distinct anchors" };
+        }
+      }
+      if (op.realizes !== undefined) {
+        if (op.stance !== "establishment") {
+          return { code: "epistemic", message: "only an establishment realizes a preparation" };
+        }
+        const prep = st.assertions.get(op.realizes);
+        if (!prep) return { code: "identity", message: `realized preparation ${op.realizes} does not exist` };
+        if (prep.stance !== "preparation") {
+          return { code: "epistemic", message: `realized target ${op.realizes} is not a preparation` };
+        }
+      }
       return null;
     }
     case "correct":
-    case "retract":
     case "supersede":
     case "rewind":
     case "erase": {
@@ -89,6 +110,45 @@ function checkInvariants(st: CampaignState, op: Operation): Rejection | null {
       if (!target) return { code: "identity", message: `target ${op.target} does not exist` };
       if (target.standing === "erased") {
         return { code: "lifecycle", message: `target ${op.target} is erased` };
+      }
+      return null;
+    }
+    case "retract": {
+      // A retraction may withdraw an assertion, a structured artifact, or a ruling.
+      const target = retractableAt(st, op.target);
+      if (!target) return { code: "identity", message: `target ${op.target} does not exist` };
+      if (target.standing === "erased") {
+        return { code: "lifecycle", message: `target ${op.target} is erased` };
+      }
+      return null;
+    }
+    case "establish-artifact": {
+      if (st.artifacts.has(op.artifact)) {
+        return { code: "identity", message: `artifact ${op.artifact} already exists` };
+      }
+      for (const link of op.links ?? []) {
+        const err = checkLinkTarget(st, link.target);
+        if (err) return err;
+      }
+      return null;
+    }
+    case "link-artifact": {
+      const art = st.artifacts.get(op.artifact);
+      if (!art) return { code: "identity", message: `artifact ${op.artifact} does not exist` };
+      if (art.standing !== "active") {
+        return { code: "lifecycle", message: `artifact ${op.artifact} is ${art.standing}` };
+      }
+      return checkLinkTarget(st, op.link.target);
+    }
+    case "establish-ruling": {
+      if (st.rulings.has(op.ruling)) {
+        return { code: "identity", message: `ruling ${op.ruling} already exists` };
+      }
+      if (op.scope.trim() === "" || op.text.trim() === "") {
+        return { code: "normative", message: "a ruling requires a non-empty scope and text" };
+      }
+      for (const a of op.anchors ?? []) {
+        if (!st.anchors.has(a)) return { code: "identity", message: `ruling scope anchor ${a} is not established` };
       }
       return null;
     }
@@ -103,4 +163,16 @@ function checkInvariants(st: CampaignState, op: Operation): Rejection | null {
     default:
       return null;
   }
+}
+
+/** An artifact link may target any existing anchor, assertion, or artifact; it confers no standing. */
+function checkLinkTarget(st: CampaignState, target: AnchorId | AssertionId | ArtifactId): Rejection | null {
+  if (
+    st.anchors.has(target as AnchorId) ||
+    st.assertions.has(target as AssertionId) ||
+    st.artifacts.has(target as ArtifactId)
+  ) {
+    return null;
+  }
+  return { code: "identity", message: `artifact link target ${target} does not exist` };
 }

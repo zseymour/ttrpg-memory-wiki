@@ -11,7 +11,7 @@
 
 import { Campaign } from "../campaign.ts";
 import { anchorId, campaignId, operationId, type AnchorId, type ConflictId, type GrantId, type OperationId } from "../core/ids.ts";
-import type { ConflictEffect, EstablishmentMode, Proposition, Provenance, Stance, Uncertainty } from "../core/operations.ts";
+import { IDENTITY_EQUIVALENCE, type ConflictEffect, type EstablishmentMode, type Proposition, type Provenance, type Stance, type Uncertainty } from "../core/operations.ts";
 import type { Receipt } from "../campaign.ts";
 import { assertionIdAt, type AssertionId } from "../core/ids.ts";
 import { Prng } from "./prng.ts";
@@ -116,6 +116,11 @@ export class World {
 
   preparation(subject: AnchorId, attribute: string, value: string, ft: number | null = null): Receipt {
     return this.assert("preparation", subject, attribute, value, { ft });
+  }
+
+  /** Assert that two anchors denote the same entity. Never merges records. */
+  equivalence(a: AnchorId, b: AnchorId, opts: { stance?: Stance; holder?: AnchorId; ft?: number } = {}): Receipt {
+    return this.assert(opts.stance ?? "establishment", a, IDENTITY_EQUIVALENCE, b, { holder: opts.holder, ft: opts.ft ?? 1 });
   }
 
   correct(target: AssertionId, value: string): Receipt {

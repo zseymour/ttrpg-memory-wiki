@@ -90,6 +90,15 @@ export function epistemicSeparation(w: World): Probe[] {
   w.establishment(corvinA, "trade", "CorvinA-Blacksmith", { ft: 1 });
   w.establishment(corvinB, "trade", "CorvinB-Assassin", { ft: 1 });
   w.noise(2);
+  // an ESTABLISHED equivalence between two anchors with distinct histories: records must not merge
+  const envoy = w.anchor("e-envoy", "The Masked Envoy");
+  const duke = w.anchor("e-duke", "Duke Alaric");
+  w.establishment(envoy, "seen", "EnvoyAtTheBall", { ft: 1 });
+  w.establishment(duke, "office", "DukeWardenNorth", { ft: 1 });
+  w.equivalence(envoy, duke, { ft: 2 });
+  // a BELIEF of equivalence between the confusable Corvins must not resolve their identity
+  w.equivalence(corvinA, corvinB, { stance: "belief", holder: kade, ft: 1 });
+  w.noise(2);
 
   return [
     probe("epistemic-separation", "belief lens reports belief, not established truth", [], () => {
@@ -123,6 +132,21 @@ export function epistemicSeparation(w: World): Probe[] {
       const rb = recallResult(w.campaign, [corvinB], [EST]);
       if (ra === null || rb === null) return false;
       return present(ra, EST, "trade", "CorvinA-Blacksmith") && absentEverywhere(ra, "CorvinB-Assassin") && present(rb, EST, "trade", "CorvinB-Assassin") && absentEverywhere(rb, "CorvinA-Blacksmith");
+    }),
+    probe("epistemic-separation", "an established equivalence preserves both anchors and their distinct histories", ["merge-on-alias"], () => {
+      const ra = recallResult(w.campaign, [envoy], [EST]);
+      const rb = recallResult(w.campaign, [duke], [EST]);
+      if (ra === null || rb === null) return false;
+      const envoyOk = present(ra, EST, "seen", "EnvoyAtTheBall") && absentEverywhere(ra, "DukeWardenNorth");
+      const dukeOk = present(rb, EST, "office", "DukeWardenNorth") && absentEverywhere(rb, "EnvoyAtTheBall");
+      const eqSurfaced = ra.equivalences.length === 1 && ra.equivalences[0]!.identities.includes("The Masked Envoy") && ra.equivalences[0]!.identities.includes("Duke Alaric");
+      return envoyOk && dukeOk && eqSurfaced;
+    }),
+    probe("epistemic-separation", "a belief of equivalence never resolves or merges confusable records", ["merge-on-alias"], () => {
+      const est = recallResult(w.campaign, [corvinA], [EST]);
+      const believed = recallResult(w.campaign, [corvinA], [belief(kade)]);
+      if (est === null || believed === null) return false;
+      return est.equivalences.length === 0 && believed.equivalences.length === 1 && present(est, EST, "trade", "CorvinA-Blacksmith") && absentEverywhere(est, "CorvinB-Assassin");
     }),
   ];
 }

@@ -6,7 +6,7 @@
  * page mutation; lifecycle standing is *derived* from accepted operations.
  */
 
-import type { AnchorId, AssertionId, ConflictId, GrantId, OperationId } from "./ids.ts";
+import type { AnchorId, ArtifactId, AssertionId, ConflictId, GrantId, OperationId, RulingId } from "./ids.ts";
 
 /**
  * The attributed stance an assertion takes toward a proposition. Multiple
@@ -29,12 +29,17 @@ export type EstablishmentMode =
   | "baseline"
   | "offscreen";
 
-/** Structured, scoped uncertainty. Absence of an assertion is Unrecorded, never false. */
+/**
+ * Structured, scoped uncertainty. `unrecorded` is the standing where memory holds
+ * no qualifying assertion at all — neither the proposition nor its negation is
+ * established. Absence of an assertion is Unrecorded, never false.
+ */
 export type Uncertainty =
   | { kind: "certain" }
   | { kind: "unknown" }
   | { kind: "partially-known"; note: string }
   | { kind: "unresolved"; alternatives: string[] }
+  | { kind: "unrecorded" }
   | { kind: "provisional" };
 
 /** Claim-scoped provenance: who introduced the stance and its narrow support. */
@@ -58,6 +63,26 @@ export interface Proposition {
   attribute: string;
   value: string;
 }
+
+/**
+ * The kind of subject a referential anchor stands for. An Event anchor is a
+ * subject of reference for a possible or actual occurrence; creating it
+ * establishes no occurrence — occurrence, time, and participants are separate
+ * assertions.
+ */
+export type AnchorRole = "entity" | "event" | "place" | "object" | "group";
+
+/**
+ * The reserved attribute for an identity-equivalence assertion: its subject and
+ * value are both anchor ids the assertion claims denote the same fictional
+ * entity. Established equivalence resolves entity identity while preserving both
+ * anchors and their histories; a belief or suspicion of equivalence is only a
+ * perspective and never merges records.
+ */
+export const IDENTITY_EQUIVALENCE = "identity-equivalence";
+
+/** Whether a proposition is an identity-equivalence claim (its value is the paired anchor id). */
+export const isEquivalence = (p: Proposition): boolean => p.attribute === IDENTITY_EQUIVALENCE;
 
 /** The actual semantic effect an authorized conflict resolution declares. */
 export type ConflictEffect =
@@ -96,8 +121,15 @@ interface OpBase {
   expect?: Precondition[];
 }
 
+/** A typed link from a structured artifact to related material. It organizes without asserting. */
+export interface ArtifactLink {
+  /** The organizing role of the target, e.g. "question", "assertion", "entity", "preparation". */
+  role: string;
+  target: AnchorId | AssertionId | ArtifactId;
+}
+
 export type Operation =
-  | (OpBase & { kind: "establish-anchor"; anchor: AnchorId; label: string })
+  | (OpBase & { kind: "establish-anchor"; anchor: AnchorId; label: string; role?: AnchorRole })
   | (OpBase & {
       kind: "assert";
       stance: Stance;
@@ -108,22 +140,36 @@ export type Operation =
       mode?: EstablishmentMode;
       uncertainty?: Uncertainty;
       provenance?: Provenance;
+      /**
+       * The preparation assertion this establishment realizes. Set only on an
+       * establishment stance: play has realized prepared material into a
+       * separately authorized, narrower established assertion linked back to it.
+       * The preparation itself is untouched — unused detail stays provisional.
+       */
+      realizes?: AssertionId;
     })
   | (OpBase & { kind: "correct"; target: AssertionId; value: string })
-  | (OpBase & { kind: "retract"; target: AssertionId })
+  | (OpBase & { kind: "retract"; target: AssertionId | ArtifactId | RulingId })
   | (OpBase & { kind: "supersede"; target: AssertionId; value: string; effectiveFrom: number | null })
   | (OpBase & { kind: "rewind"; target: AssertionId })
   | (OpBase & { kind: "erase"; target: AssertionId })
   | (OpBase & { kind: "resolve-conflict"; conflict: ConflictId; effect: ConflictEffect })
   | (OpBase & { kind: "set-safety-boundary"; boundary: SafetyBoundary; erase?: AssertionId[] })
   | (OpBase & { kind: "grant-authority"; delegate: GrantId; grantee: string; acts: Act[] })
-  | (OpBase & { kind: "revoke-authority"; delegate: GrantId });
+  | (OpBase & { kind: "revoke-authority"; delegate: GrantId })
+  // Structured artifact: identity organizing related material without asserting it.
+  | (OpBase & { kind: "establish-artifact"; artifact: ArtifactId; artifactKind: string; label: string; links?: ArtifactLink[]; provenance?: Provenance })
+  | (OpBase & { kind: "link-artifact"; artifact: ArtifactId; link: ArtifactLink })
+  // Normative item: a campaign ruling governing adjudication for a defined scope.
+  | (OpBase & { kind: "establish-ruling"; ruling: RulingId; scope: string; text: string; ruleRef?: string; anchors?: AnchorId[]; provenance?: Provenance });
 
 /** The semantic acts authority can be delegated for. */
 export type Act =
-  | "establish" // create establishment-stance assertions
+  | "establish" // create establishment-stance assertions and referential anchors
   | "prepare" // create preparation-stance assertions
   | "portray" // create belief/suspicion/awareness assertions
+  | "organize" // create and link structured artifacts
+  | "rule" // author normative campaign rulings
   | "maintain" // correct/retract/supersede/rewind
   | "resolve"; // resolve continuity conflicts
 
@@ -141,6 +187,11 @@ export function requiredAct(op: Operation): Act | "owner-only" | null {
         default:
           return "portray";
       }
+    case "establish-artifact":
+    case "link-artifact":
+      return "organize";
+    case "establish-ruling":
+      return "rule";
     case "correct":
     case "retract":
     case "supersede":

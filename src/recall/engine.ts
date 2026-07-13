@@ -9,18 +9,23 @@
  * enrichment; an infeasible mandatory reserve is rejected without full assembly.
  */
 
-import type { AnchorId } from "../core/ids.ts";
+import type { AnchorId, AssertionId } from "../core/ids.ts";
+import { IDENTITY_EQUIVALENCE, isEquivalence, type Provenance } from "../core/operations.ts";
 import type { AssertionRecord, CampaignState } from "../core/state.ts";
 import {
   lensAdmits,
   lensKey,
   type Lens,
+  type RecallArtifact,
+  type RecallEquivalence,
   type RecallGap,
   type RecallItem,
   type RecallOutcome,
   type RecallQualification,
   type RecallRequest,
   type RecallResult,
+  type RecallRuling,
+  type RecallUnrecorded,
   type TemporalMatch,
   type Vantage,
 } from "./contract.ts";
@@ -73,16 +78,21 @@ function temporalMatch(itemTime: number | null, focus: number | null): TemporalM
   return itemTime <= focus ? "definitely-applicable" : "definitely-outside";
 }
 
+/** Compact inline provenance: a gap marker, an attributed evidence locator, or the introducer. */
+function formatProvenance(prov: Provenance): string {
+  return prov.gap
+    ? `gap: ${prov.gap}`
+    : prov.evidence
+      ? `${prov.introducedBy} @ ${prov.evidence.locator}`
+      : prov.introducedBy;
+}
+
 function qualify(state: CampaignState, a: AssertionRecord, lens: Lens, vantage: Vantage): RecallQualification {
   const anchor = state.anchors.get(a.proposition.subject);
   const inConflict = [...state.conflicts.values()].some(
     (c) => c.resolvedAt === null && c.members.includes(a.id),
   );
-  const prov = a.provenance.gap
-    ? `gap: ${a.provenance.gap}`
-    : a.provenance.evidence
-      ? `${a.provenance.introducedBy} @ ${a.provenance.evidence.locator}`
-      : a.provenance.introducedBy;
+  const prov = formatProvenance(a.provenance);
   return {
     anchor: a.proposition.subject,
     attribute: a.proposition.attribute,
@@ -95,6 +105,7 @@ function qualify(state: CampaignState, a: AssertionRecord, lens: Lens, vantage: 
     uncertainty: a.uncertainty,
     authority: a.mode ? `${a.actor} (${a.mode})` : a.actor,
     provenance: prov,
+    ...(a.realizes ? { realizes: a.realizes } : {}),
     ...(inConflict ? { conflict: "unresolved continuity conflict" } : {}),
   };
 }
@@ -128,6 +139,10 @@ export function assemble(plan: RecallPlan, state: CampaignState): RecallOutcome 
     safety: [],
     lenses: {},
     conflicts: [],
+    equivalences: [],
+    artifacts: [],
+    rulings: [],
+    unrecorded: [],
     gaps: [],
     omissionManifest: [],
     spent: 0,
@@ -196,6 +211,9 @@ export function assemble(plan: RecallPlan, state: CampaignState): RecallOutcome 
     const candidates: AssertionRecord[] = [];
     for (const a of state.assertions.values()) {
       if (a.proposition.subject !== path.focal) continue;
+      // Identity equivalences carry the whole envelope in their own section, never as
+      // an attribute/value item that could read as a plain claim about the subject.
+      if (isEquivalence(a.proposition)) continue;
       if (!recallable(a, path.lens)) continue;
       candidates.push(a);
     }
@@ -223,6 +241,137 @@ export function assemble(plan: RecallPlan, state: CampaignState): RecallOutcome 
         remediation: "raise the recall budget or narrow the focus",
       });
     }
+  }
+
+  // Tier 3 (identity) — equivalences touching the focus, per admitting lens. Records
+  // are never merged: each anchor keeps its own identity and history.
+  for (const a of state.assertions.values()) {
+    if (!isEquivalence(a.proposition)) continue;
+    if (a.standing !== "active" || a.erased) continue;
+    const subj = a.proposition.subject;
+    const other = a.proposition.value as AnchorId;
+    if (!focalSet.has(subj) && !focalSet.has(other)) continue;
+    const lens = req.lenses.find((l) => lensAdmits(l, a.stance, a.holder));
+    if (!lens) continue;
+    if (spent >= req.budget.total) {
+      gap({
+        requirement: "identity-equivalence",
+        lens: lensKey(lens),
+        vantage: req.vantage,
+        reason: "an identity equivalence touching the focus did not fit the budget",
+        scope: `${subj} ${IDENTITY_EQUIVALENCE} ${other}`,
+        consequence: "an established or perspectival identity link was not surfaced",
+        remediation: "raise the recall budget",
+      });
+      continue;
+    }
+    result.equivalences.push({
+      assertion: a.id,
+      anchors: [subj, other],
+      identities: [state.anchors.get(subj)?.label ?? String(subj), state.anchors.get(other)?.label ?? String(other)],
+      qualification: qualify(state, a, lens, req.vantage),
+    } satisfies RecallEquivalence);
+    spent++;
+  }
+
+  // Tier 3 (answers) — explicit Unrecorded for requested expectations with no
+  // qualifying assertion. Absence is Unrecorded, never false and never silent.
+  for (const exp of req.expectations ?? []) {
+    if (!state.anchors.has(exp.anchor)) {
+      // An expectation naming an unestablished anchor is an unresolved selector, not an
+      // Unrecorded answer: Unrecorded is scoped to a proposition about an existing subject.
+      gap({
+        requirement: "recall-selector",
+        lens: null,
+        vantage: req.vantage,
+        reason: `expectation names anchor ${exp.anchor}, which is not established at the vantage`,
+        scope: `${exp.anchor} / ${exp.attribute}`,
+        consequence: "an unresolved selector cannot be answered Unrecorded",
+        remediation: "establish the anchor or correct the selector",
+      });
+      continue;
+    }
+    for (const lens of req.lenses) {
+      const answered = [...state.assertions.values()].some(
+        (a) => a.proposition.subject === exp.anchor && a.proposition.attribute === exp.attribute && recallable(a, lens),
+      );
+      if (answered) continue;
+      if (spent >= req.budget.total) {
+        gap({
+          requirement: "unrecorded",
+          lens: lensKey(lens),
+          vantage: req.vantage,
+          reason: "an unrecorded expectation did not fit the budget",
+          scope: `${exp.anchor} / ${exp.attribute}`,
+          consequence: "explicit Unrecorded answer was not surfaced",
+          remediation: "raise the recall budget",
+        });
+        continue;
+      }
+      result.unrecorded.push({ anchor: exp.anchor, attribute: exp.attribute, lens: lensKey(lens), uncertainty: { kind: "unrecorded" } } satisfies RecallUnrecorded);
+      spent++;
+    }
+  }
+
+  // Tier 4 — structured artifacts organizing focal material. A link confers no standing.
+  for (const art of state.artifacts.values()) {
+    if (art.standing !== "active") continue;
+    const touchesFocus = art.links.some((l) => {
+      if (focalSet.has(l.target as AnchorId)) return true;
+      const linked = state.assertions.get(l.target as AssertionId);
+      return linked ? focalSet.has(linked.proposition.subject) : false;
+    });
+    if (!touchesFocus) continue;
+    if (spent >= req.budget.total) {
+      gap({
+        requirement: "structured-artifact",
+        lens: null,
+        vantage: req.vantage,
+        reason: "a structured artifact touching the focus did not fit the budget",
+        scope: String(art.id),
+        consequence: "an organizing artifact was not surfaced",
+        remediation: "raise the recall budget",
+      });
+      continue;
+    }
+    result.artifacts.push({
+      id: art.id,
+      kind: art.kind,
+      label: art.label,
+      links: art.links.map((l) => ({ role: l.role, target: String(l.target) })),
+      standing: art.standing,
+      authority: art.actor,
+      provenance: formatProvenance(art.provenance),
+    } satisfies RecallArtifact);
+    spent++;
+  }
+
+  // Tier 5 — rule context: applicable campaign rulings for the focus, never fictional truth.
+  for (const rul of state.rulings.values()) {
+    if (rul.standing !== "active") continue;
+    if (!rul.anchors.some((a) => focalSet.has(a))) continue;
+    if (spent >= req.budget.total) {
+      gap({
+        requirement: "rule-context",
+        lens: null,
+        vantage: req.vantage,
+        reason: "a campaign ruling for the focus did not fit the budget",
+        scope: rul.scope,
+        consequence: "an applicable ruling was not surfaced",
+        remediation: "raise the recall budget",
+      });
+      continue;
+    }
+    result.rulings.push({
+      id: rul.id,
+      scope: rul.scope,
+      text: rul.text,
+      ruleRef: rul.ruleRef,
+      standing: rul.standing,
+      authority: rul.actor,
+      provenance: formatProvenance(rul.provenance),
+    } satisfies RecallRuling);
+    spent++;
   }
 
   // Enrichment tier is admitted only when closure is complete. No enrichment

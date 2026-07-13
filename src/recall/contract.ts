@@ -9,7 +9,7 @@
  * in items, references, omission manifests, counts, or gap wording.
  */
 
-import type { AnchorId, AssertionId } from "../core/ids.ts";
+import type { AnchorId, ArtifactId, AssertionId, RulingId } from "../core/ids.ts";
 import type { SafetyBoundary, Stance, Uncertainty } from "../core/operations.ts";
 import type { Standing } from "../core/state.ts";
 
@@ -59,6 +59,12 @@ export interface RecallRequest {
   lenses: Lens[];
   vantage: Vantage;
   budget: Budget;
+  /**
+   * Propositions the caller wants an explicit answer about. A focal/attribute pair
+   * with no qualifying assertion recalls as Unrecorded — never as false or silent
+   * absence.
+   */
+  expectations?: { anchor: AnchorId; attribute: string }[];
 }
 
 /** The three-valued relation between qualified fictional time and the vantage. */
@@ -77,6 +83,8 @@ export interface RecallQualification {
   uncertainty: Uncertainty;
   authority: string;
   provenance: string;
+  /** The preparation this establishment realized, if any (linked back to provisional material). */
+  realizes?: AssertionId;
   /** Set when this item participates in an unresolved continuity conflict. */
   conflict?: string;
 }
@@ -112,6 +120,45 @@ export interface SurfacedConflict {
   members: AssertionId[];
 }
 
+/** An established or perspectival claim that two anchors denote the same entity. Never merges records. */
+export interface RecallEquivalence {
+  assertion: AssertionId;
+  anchors: [AnchorId, AnchorId];
+  identities: [string, string];
+  qualification: RecallQualification;
+}
+
+/** A structured artifact surfaced for organization; its links confer no standing. */
+export interface RecallArtifact {
+  id: ArtifactId;
+  kind: string;
+  label: string;
+  links: { role: string; target: string }[];
+  standing: Standing;
+  authority: string;
+  /** Compact claim-scoped provenance for the artifact itself (not its linked targets). */
+  provenance: string;
+}
+
+/** A normative campaign ruling surfaced as rule context, distinct from fictional truth. */
+export interface RecallRuling {
+  id: RulingId;
+  scope: string;
+  text: string;
+  ruleRef: string | null;
+  standing: Standing;
+  authority: string;
+  provenance: string;
+}
+
+/** An explicit Unrecorded answer: memory holds no qualifying assertion for this slot. */
+export interface RecallUnrecorded {
+  anchor: AnchorId;
+  attribute: string;
+  lens: string;
+  uncertainty: Uncertainty;
+}
+
 export interface RecallResult {
   complete: boolean;
   vantage: Vantage;
@@ -119,6 +166,14 @@ export interface RecallResult {
   safety: SafetyBoundary[];
   lenses: Record<string, RecallItem[]>;
   conflicts: SurfacedConflict[];
+  /** Established/believed/suspected identity equivalences touching the focus. */
+  equivalences: RecallEquivalence[];
+  /** Structured artifacts (threads, open questions) organizing focal material. */
+  artifacts: RecallArtifact[];
+  /** Applicable campaign rulings (rule context) for the focus. */
+  rulings: RecallRuling[];
+  /** Explicit Unrecorded answers for requested expectations with no qualifying assertion. */
+  unrecorded: RecallUnrecorded[];
   gaps: RecallGap[];
   omissionManifest: OmissionManifest[];
   /** Spent vs. total budget, for honest work-factor inspection. */

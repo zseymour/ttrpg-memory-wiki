@@ -13,10 +13,12 @@ export * from "./core/operations.ts";
 export {
   replay,
   type Accepted,
+  type ArtifactRecord,
   type AssertionRecord,
   type CampaignState,
   type ContinuityConflict,
   type GrantRecord,
+  type RulingRecord,
   type Standing,
 } from "./core/state.ts";
 export { validate, type Rejection } from "./core/validate.ts";
