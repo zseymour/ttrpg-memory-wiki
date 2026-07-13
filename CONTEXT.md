@@ -360,6 +360,10 @@ _Avoid_: Conclusion, established truth, only discovered evidence
 An unresolved question pursued through clues. Its resolution mode is fixed when an established answer already exists, emergent when an authorized procedure will establish the answer, or hybrid when established constraints bound an otherwise open answer.
 _Avoid_: Clue, automatically fixed solution
 
+**Session**:
+One bounded sitting of play, grouping the contributions and recall activity between resuming and suspending a campaign. Session boundaries organize play history, orientation, and campaign scale, but they confer no semantic standing: establishment order and fictional time remain the only governing orders.
+_Avoid_: Scene, establishment-order unit, semantic precedence marker, truth boundary
+
 **Play context**:
 The active conversation and immediate transcript that drive current play and may contain substantially more evocative and incidental detail than campaign memory preserves.
 _Avoid_: Campaign memory, permanent transcript archive
