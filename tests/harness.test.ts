@@ -23,6 +23,9 @@ const EXPECTED_KILLS: CatalogId[] = [
   "over-detection",
   "context-stuffing",
   "cross-campaign-bleed",
+  "projection-as-record",
+  "byte-diff-as-edit",
+  "auto-accepted-intake",
 ];
 
 describe("acceptance harness", () => {

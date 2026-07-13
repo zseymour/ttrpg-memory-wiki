@@ -9,6 +9,8 @@
 
 import { Campaign } from "../campaign.ts";
 import { reviveExport } from "../core/export.ts";
+import { project } from "../projection/project.ts";
+import { applyIntake, compileEdit } from "../projection/intake.ts";
 import type { CampaignState } from "../core/state.ts";
 import type { Lens } from "../recall/contract.ts";
 import { FAILURE_CATALOG, type CatalogId } from "./catalog.ts";
@@ -119,6 +121,49 @@ export function auxiliaryProbes(seed: number): Probe[] {
         const secret = w.establishment(voss, "trauma", "HARMFUL-ABC", { ft: 1 });
         w.safety("sb-1", "captivity", [w.id(secret)]);
         return !JSON.stringify(w.campaign.exportCampaign()).includes("HARMFUL-ABC") && w.campaign.state().assertions.get(w.id(secret))!.erased;
+      },
+    },
+    {
+      family: "human-editability",
+      name: "[aux] the projected page is not the record until intake is accepted",
+      kills: ["projection-as-record"],
+      check: () => {
+        const w = new World({ seed, scale: 3, campaign: `proj-${seed}` });
+        const v = w.anchor("p-voss", "Voss");
+        w.establishment(v, "status", "alive");
+        const { text, manifest } = project(w.campaign.id, w.campaign.state(), v);
+        const edited = text.replace("status: alive", "status: dead");
+        compileEdit(manifest, edited); // inspecting the edit must not touch the record
+        return w.campaign.state().assertions.get(manifest.fields["status"]!.assertion)!.effectiveValue === "alive";
+      },
+    },
+    {
+      family: "human-editability",
+      name: "[aux] a formatter pass diverges by bytes but compiles to zero operations",
+      kills: ["byte-diff-as-edit"],
+      check: () => {
+        const w = new World({ seed, scale: 3, campaign: `fmt-${seed}` });
+        const v = w.anchor("f-voss", "Voss");
+        w.establishment(v, "note", "She keeps a ledger nobody may touch.");
+        const { text, manifest } = project(w.campaign.id, w.campaign.state(), v);
+        const reflowed = text.replace("She keeps a ledger nobody may touch.", "She keeps a ledger\nnobody    may touch.") + "\n\n";
+        const result = compileEdit(manifest, reflowed);
+        return result.diverged && result.proposals.length === 0;
+      },
+    },
+    {
+      family: "human-editability",
+      name: "[aux] an ambiguous deletion is held, never auto-accepted",
+      kills: ["auto-accepted-intake"],
+      check: () => {
+        const w = new World({ seed, scale: 3, campaign: `amb-${seed}` });
+        const v = w.anchor("a-voss", "Voss");
+        w.establishment(v, "status", "alive");
+        const { text, manifest } = project(w.campaign.id, w.campaign.state(), v);
+        const edited = text.replace("status: alive\n", "");
+        const dispositions = applyIntake(w.campaign, manifest, compileEdit(manifest, edited), "player");
+        const held = dispositions.some((d) => d.proposal.kind === "retract-field" && d.outcome === "held");
+        return held && w.campaign.state().assertions.get(manifest.fields["status"]!.assertion)!.standing === "active";
       },
     },
   ];
