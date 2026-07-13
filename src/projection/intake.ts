@@ -9,7 +9,8 @@
  * stale edit surfaces an explicit conflict instead of overwriting.
  */
 
-import type { Campaign, Receipt } from "../campaign.ts";
+import type { Campaign } from "../campaign.ts";
+import type { Receipt } from "../core/receipt.ts";
 import { operationId, type AssertionId } from "../core/ids.ts";
 import { normalize, pageSha, type Manifest } from "./project.ts";
 

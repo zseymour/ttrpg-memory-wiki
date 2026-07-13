@@ -12,7 +12,7 @@
 import { Campaign } from "../campaign.ts";
 import { anchorId, campaignId, operationId, type AnchorId, type ConflictId, type GrantId, type OperationId } from "../core/ids.ts";
 import { IDENTITY_EQUIVALENCE, type ConflictEffect, type EstablishmentMode, type Proposition, type Provenance, type Stance, type Uncertainty } from "../core/operations.ts";
-import type { Receipt } from "../campaign.ts";
+import type { Receipt } from "../core/receipt.ts";
 import { assertionIdAt, type AssertionId } from "../core/ids.ts";
 import { Prng } from "./prng.ts";
 

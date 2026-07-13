@@ -8,23 +8,13 @@
 
 import { campaignId, type CampaignId, type OperationId } from "./core/ids.ts";
 import type { Operation } from "./core/operations.ts";
+import { acceptedReceipt, type Receipt } from "./core/receipt.ts";
 import { apply, emptyState, replay, type Accepted, type CampaignState } from "./core/state.ts";
 import { validate } from "./core/validate.ts";
 import { exportCampaign, type CampaignExport } from "./core/export.ts";
 import { FileVault, type VaultStore } from "./core/vault.ts";
 import type { RecallOutcome, RecallRequest } from "./recall/contract.ts";
 import { assemble, plan } from "./recall/engine.ts";
-
-/** A non-authoritative record of a proposal's disposition, enabling idempotent retry. */
-export interface Receipt {
-  operationId: OperationId;
-  disposition: "accepted" | "rejected";
-  reason: string;
-  /** Establishment-order position for accepted operations; null when rejected. */
-  pos: number | null;
-  /** Monotonic receipt sequence: non-authoritative timing, never used as precedence. */
-  seq: number;
-}
 
 export class Campaign {
   readonly id: CampaignId;
@@ -39,9 +29,12 @@ export class Campaign {
     this.id = id;
     this.owner = owner;
     this.store = store;
+    // A reopened vault persists only the log; reconstruct each accepted receipt so
+    // position lookup and export behave identically to the originating instance.
     for (const entry of store?.loadLog() ?? []) {
       this.log.push(entry);
       apply(this.liveState, entry);
+      this.receipts.set(entry.op.operationId, acceptedReceipt(entry.op.operationId, entry.pos, ++this.seq));
     }
   }
 
@@ -79,13 +72,7 @@ export class Campaign {
     this.log.push(entry);
     apply(this.liveState, entry);
     this.store?.append(entry); // durable, in establishment order
-    const receipt: Receipt = {
-      operationId: op.operationId,
-      disposition: "accepted",
-      reason: `accepted at establishment position ${pos}`,
-      pos,
-      seq,
-    };
+    const receipt = acceptedReceipt(op.operationId, pos, seq);
     this.receipts.set(op.operationId, receipt);
     return receipt;
   }
@@ -115,7 +102,8 @@ export class Campaign {
   }
 
   exportCampaign(): CampaignExport {
-    return exportCampaign(this.id, this.owner, this.log);
+    const receipts = this.log.map((entry) => this.receipts.get(entry.op.operationId)!);
+    return exportCampaign(this.id, this.owner, this.log, receipts);
   }
 
   /** Replay an export into a fresh, independent instance. */
@@ -124,6 +112,10 @@ export class Campaign {
     for (const entry of exp.log) {
       campaign.log.push(entry);
       apply(campaign.liveState, entry);
+    }
+    for (const receipt of exp.receipts) {
+      campaign.receipts.set(receipt.operationId, receipt);
+      if (receipt.seq > campaign.seq) campaign.seq = receipt.seq;
     }
     return campaign;
   }

@@ -1,14 +1,17 @@
 /**
  * Campaign export and replay.
  *
- * Export serializes the authoritative operation log — and only that — so replay
- * into a fresh instance reproduces identity, standing, authority context,
- * conflicts, uncertainty, and provenance with no Source store and no source
- * re-extraction. Erased content is compacted out of the exported log entirely;
- * a redacted-but-present tombstone preserves continuity without the content.
+ * Export serializes the authoritative operation log so replay into a fresh
+ * instance reproduces identity, standing, authority context, conflicts,
+ * uncertainty, and provenance with no Source store and no source re-extraction.
+ * Alongside the log it carries the accepted receipts — non-authoritative, but
+ * needed so replay reproduces each disposition at its establishment-order
+ * position. Erased content is compacted out of the exported log entirely; a
+ * redacted-but-present tombstone preserves continuity without the content.
  */
 
 import type { Operation } from "./operations.ts";
+import type { Receipt } from "./receipt.ts";
 import { replay, type Accepted } from "./state.ts";
 
 export interface CampaignExport {
@@ -16,6 +19,13 @@ export interface CampaignExport {
   campaign: string;
   owner: string;
   log: Accepted[];
+  /**
+   * Accepted receipts in establishment order, one per log entry. Non-authoritative,
+   * but exported so replay reproduces each receipt — including seq gaps left by
+   * rejected operations, which the log alone cannot reconstruct. Receipts carry no
+   * originating content, so erasure never redacts them.
+   */
+  receipts: Receipt[];
 }
 
 /** Positions whose originating content must be redacted from the export. */
@@ -45,12 +55,17 @@ function redact(op: Operation): Operation {
 }
 
 /** Serialize a campaign's authoritative record, compacting out erased content. */
-export function exportCampaign(campaign: string, owner: string, log: readonly Accepted[]): CampaignExport {
+export function exportCampaign(
+  campaign: string,
+  owner: string,
+  log: readonly Accepted[],
+  receipts: readonly Receipt[],
+): CampaignExport {
   const erased = erasedPositions(log);
   const compacted = log.map((entry) =>
     erased.has(entry.pos) ? { pos: entry.pos, op: redact(entry.op) } : entry,
   );
-  return { version: 1, campaign, owner, log: compacted };
+  return { version: 1, campaign, owner, log: compacted, receipts: [...receipts] };
 }
 
 /**

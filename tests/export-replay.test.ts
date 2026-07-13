@@ -92,3 +92,22 @@ describe("erasure removes content from the record itself", () => {
     expect(c.state().assertions.get(aid(secret))!.erased).toBe(true);
   });
 });
+
+describe("receipts survive export/replay", () => {
+  test("accepted receipts match at every establishment-order position, preserving seq gaps from rejections", () => {
+    const c = newCampaign("player");
+    const first = establishAnchor(c, "player", "npc-voss", "Maera Voss"); // pos 1, seq 1
+    const rejected = establishAnchor(c, "stranger", "npc-other", "Other"); // seq 2, rejected — no position
+    expect(rejected.disposition).toBe("rejected");
+    const second = assertClaim(c, { actor: "player", stance: "establishment", subject: "npc-voss", attribute: "name", value: "Mara Vos" }); // pos 2, seq 3
+
+    const replayed = roundTrip(c);
+    for (const original of [first, second]) {
+      expect(replayed.receiptFor(original.operationId)).toEqual(original);
+    }
+    // the rejected op left no establishment-order position and is not part of the authoritative record
+    expect(replayed.receiptFor(rejected.operationId)).toBeUndefined();
+    // the seq gap left by the rejection is preserved, not densified away
+    expect(replayed.receiptFor(second.operationId)!.seq).toBe(3);
+  });
+});

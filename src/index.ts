@@ -7,7 +7,8 @@
  * the recall contract, and export/replay.
  */
 
-export { Campaign, type Receipt } from "./campaign.ts";
+export { Campaign } from "./campaign.ts";
+export { type Receipt } from "./core/receipt.ts";
 export * from "./core/ids.ts";
 export * from "./core/operations.ts";
 export {

@@ -8,7 +8,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { anchorId, Campaign, lensKey, operationId, type Lens } from "../src/index.ts";
+import { anchorId, Campaign, lensKey, operationId, reviveExport, type Lens } from "../src/index.ts";
 
 const tmps: string[] = [];
 function tmpVault(): string {
@@ -65,6 +65,21 @@ describe("durable vault (#14)", () => {
     expect(reopened.head()).toBe(headBefore);
     expect(reopened.owner).toBe("player");
     expect(recallRole(reopened)).toBe("harbormaster");
+  });
+
+  test("a reopened vault exports to a self-contained artifact whose receipts replay", () => {
+    const dir = tmpVault();
+    seed(Campaign.openVault(dir, "player"));
+
+    // the reopened instance rebuilt its receipts from the log alone (nothing else persists)
+    const reopened = Campaign.openVault(dir);
+    const replayed = Campaign.fromExport(reviveExport(JSON.stringify(reopened.exportCampaign())));
+
+    expect(replayed.head()).toBe(reopened.head());
+    for (const opId of [operationId("a"), operationId("b")]) {
+      expect(replayed.receiptFor(opId)).toEqual(reopened.receiptFor(opId));
+      expect(replayed.receiptFor(opId)!.disposition).toBe("accepted");
+    }
   });
 
   test("two vaults are fully isolated", () => {
