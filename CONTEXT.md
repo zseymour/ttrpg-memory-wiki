@@ -220,6 +220,10 @@ _Avoid_: File read, global memory dump
 An attributed description of a Recall situation that fixes its kind, focal identities, epistemic audience, temporal and Authoritative-record vantage, and bounded-context budget, while optionally supplying task prose for enrichment. Structured constraints govern Recall-critical closure and cannot be weakened by prose.
 _Avoid_: Search query, prompt-only request, implicit perspective
 
+**Recall expectation**:
+A caller-named proposition slot a Recall request asks campaign memory to answer explicitly, so a slot with no qualifying assertion returns an Unrecorded answer rather than silence, while one naming an unresolved Referential anchor becomes a Recall gap rather than a confident Unrecorded. An expectation reports absence; it never licenses closed-world negation or a guessed value.
+_Avoid_: Search filter, closed-world negation, default value
+
 **Recall seed**:
 Attributed, bounded material from the active Play context supplied to focus a Recall request, such as transcript references, mentioned selectors, or task-local statements. It may guide planning and relevance but remains non-authoritative request context and cannot establish or alter identity, awareness, standing, or current state.
 _Avoid_: Implicit Memory operation, authoritative prompt overlay, durable transcript
