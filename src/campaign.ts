@@ -8,7 +8,7 @@
 
 import { campaignId, type CampaignId, type OperationId } from "./core/ids.ts";
 import type { Operation } from "./core/operations.ts";
-import { replay, type Accepted, type CampaignState } from "./core/state.ts";
+import { apply, emptyState, replay, type Accepted, type CampaignState } from "./core/state.ts";
 import { validate } from "./core/validate.ts";
 import { exportCampaign, type CampaignExport } from "./core/export.ts";
 import type { RecallOutcome, RecallRequest } from "./recall/contract.ts";
@@ -31,7 +31,7 @@ export class Campaign {
   private readonly log: Accepted[] = [];
   private readonly receipts = new Map<OperationId, Receipt>();
   private seq = 0;
-  private cachedState: CampaignState | null = null;
+  private readonly liveState: CampaignState = emptyState();
 
   constructor(id: CampaignId, owner: string) {
     this.id = id;
@@ -62,8 +62,9 @@ export class Campaign {
     }
 
     const pos = this.log.length + 1;
-    this.log.push({ op, pos });
-    this.cachedState = null;
+    const entry: Accepted = { op, pos };
+    this.log.push(entry);
+    apply(this.liveState, entry);
     const receipt: Receipt = {
       operationId: op.operationId,
       disposition: "accepted",
@@ -75,10 +76,9 @@ export class Campaign {
     return receipt;
   }
 
-  /** Current derived state at head. Rebuilt lazily from the log; never mutated in place. */
+  /** Current derived state at head, maintained incrementally as operations are accepted. */
   state(): CampaignState {
-    if (!this.cachedState) this.cachedState = replay(this.log);
-    return this.cachedState;
+    return this.liveState;
   }
 
   /** The current head establishment-order position. */
@@ -96,7 +96,7 @@ export class Campaign {
     if (pos < 0 || pos > this.log.length) {
       return { kind: "unavailable", reason: `no trustworthy snapshot at establishment position ${pos}` };
     }
-    const snapshot = replay(this.log.slice(0, pos));
+    const snapshot = pos === this.log.length ? this.liveState : replay(this.log.slice(0, pos));
     return assemble(plan(request), snapshot);
   }
 
@@ -107,7 +107,10 @@ export class Campaign {
   /** Replay an export into a fresh, independent instance. */
   static fromExport(exp: CampaignExport): Campaign {
     const campaign = new Campaign(campaignId(exp.campaign), exp.owner);
-    for (const entry of exp.log) campaign.log.push(entry);
+    for (const entry of exp.log) {
+      campaign.log.push(entry);
+      apply(campaign.liveState, entry);
+    }
     return campaign;
   }
 }

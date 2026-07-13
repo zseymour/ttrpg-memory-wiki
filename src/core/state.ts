@@ -79,6 +79,8 @@ export interface CampaignState {
   conflicts: Map<ConflictId, ContinuityConflict>;
   safety: Map<string, SafetyBoundary>;
   grants: Map<GrantId, GrantRecord>;
+  /** Index of active establishment assertions by slot, for O(slot) conflict detection. */
+  establishmentBySlot: Map<string, Set<AssertionId>>;
 }
 
 const slotOf = (p: Proposition): string => `${p.subject}::${p.attribute}`;
@@ -91,6 +93,7 @@ export function emptyState(): CampaignState {
     conflicts: new Map(),
     safety: new Map(),
     grants: new Map(),
+    establishmentBySlot: new Map(),
   };
 }
 
@@ -101,7 +104,7 @@ export function replay(log: readonly Accepted[]): CampaignState {
   return st;
 }
 
-function apply(st: CampaignState, { op, pos }: Accepted): void {
+export function apply(st: CampaignState, { op, pos }: Accepted): void {
   st.head = pos;
   switch (op.kind) {
     case "establish-anchor":
@@ -120,8 +123,7 @@ function apply(st: CampaignState, { op, pos }: Accepted): void {
     case "correct": {
       const target = st.assertions.get(op.target);
       if (!target) return;
-      target.standing = "corrected";
-      target.standingReason = `superseded by correction at ${pos}`;
+      deactivate(st, target, "corrected", `superseded by correction at ${pos}`);
       // The corrected (right) value enters as a fresh active establishment,
       // preserving the erroneous record as inspectable lifecycle history.
       const rec = addAssertion(st, pos, op.actor, target.stance, { ...target.proposition, value: op.value }, {
@@ -137,15 +139,13 @@ function apply(st: CampaignState, { op, pos }: Accepted): void {
     case "retract": {
       const target = st.assertions.get(op.target);
       if (!target) return;
-      target.standing = "retracted";
-      target.standingReason = `retracted by ${op.actor} at ${pos}`;
+      deactivate(st, target, "retracted", `retracted by ${op.actor} at ${pos}`);
       return;
     }
     case "supersede": {
       const target = st.assertions.get(op.target);
       if (!target) return;
-      target.standing = "superseded";
-      target.standingReason = `superseded at ${pos}, effective from ${op.effectiveFrom}`;
+      deactivate(st, target, "superseded", `superseded at ${pos}, effective from ${op.effectiveFrom}`);
       addAssertion(st, pos, op.actor, target.stance, { ...target.proposition, value: op.value }, {
         holder: target.holder,
         fictionalTime: op.effectiveFrom,
@@ -158,8 +158,7 @@ function apply(st: CampaignState, { op, pos }: Accepted): void {
     case "rewind": {
       const target = st.assertions.get(op.target);
       if (!target) return;
-      target.standing = "rewound";
-      target.standingReason = `rewound at ${pos}; must not return to play`;
+      deactivate(st, target, "rewound", `rewound at ${pos}; must not return to play`);
       return;
     }
     case "erase": {
@@ -202,6 +201,13 @@ interface AssertionInit {
   provenance: Provenance;
 }
 
+/** Move an assertion out of active standing, updating the establishment slot index. */
+function deactivate(st: CampaignState, rec: AssertionRecord, standing: Standing, reason: string): void {
+  rec.standing = standing;
+  rec.standingReason = reason;
+  if (rec.stance === "establishment") st.establishmentBySlot.get(slotOf(rec.proposition))?.delete(rec.id);
+}
+
 function addAssertion(
   st: CampaignState,
   pos: number,
@@ -228,7 +234,16 @@ function addAssertion(
     erased: false,
   };
   st.assertions.set(rec.id, rec);
-  if (stance === "establishment") detectConflicts(st, rec);
+  if (stance === "establishment") {
+    const slot = slotOf(proposition);
+    let active = st.establishmentBySlot.get(slot);
+    if (!active) {
+      active = new Set();
+      st.establishmentBySlot.set(slot, active);
+    }
+    detectConflicts(st, rec, slot, active);
+    active.add(rec.id);
+  }
   return rec;
 }
 
@@ -236,13 +251,12 @@ function addAssertion(
  * Continuity conflict = two active *establishment* assertions on one single-valued
  * slot claiming the same fictional time with different values. A later fictional
  * time is a State transition, not a conflict; beliefs/suspicions never conflict.
+ * `active` holds only the currently-active establishment ids on the slot.
  */
-function detectConflicts(st: CampaignState, rec: AssertionRecord): void {
-  const slot = slotOf(rec.proposition);
-  for (const other of st.assertions.values()) {
-    if (other.id === rec.id) continue;
-    if (other.stance !== "establishment" || other.standing !== "active") continue;
-    if (slotOf(other.proposition) !== slot) continue;
+function detectConflicts(st: CampaignState, rec: AssertionRecord, slot: string, active: Set<AssertionId>): void {
+  for (const otherId of active) {
+    const other = st.assertions.get(otherId);
+    if (!other) continue;
     if (other.fictionalTime !== rec.fictionalTime) continue; // distinct time => transition
     if (other.effectiveValue === rec.effectiveValue) continue;
     const id = conflictIdOf(other.pos, rec.pos);
@@ -250,13 +264,7 @@ function detectConflicts(st: CampaignState, rec: AssertionRecord): void {
     if (existing) {
       if (!existing.members.includes(rec.id)) existing.members.push(rec.id);
     } else {
-      st.conflicts.set(id, {
-        id,
-        slot,
-        members: [other.id, rec.id],
-        resolvedAt: null,
-        resolution: null,
-      });
+      st.conflicts.set(id, { id, slot, members: [other.id, rec.id], resolvedAt: null, resolution: null });
     }
   }
 }
@@ -273,20 +281,14 @@ function applyResolution(
       for (const id of conflict.members) {
         if (id === effect.keep) continue;
         const a = st.assertions.get(id);
-        if (a) {
-          a.standing = "corrected";
-          a.standingReason = `declared erroneous record by conflict resolution at ${pos}`;
-        }
+        if (a) deactivate(st, a, "corrected", `declared erroneous record by conflict resolution at ${pos}`);
       }
       conflict.resolution = `correction: kept ${effect.keep}`;
       break;
     }
     case "rewind": {
       const a = st.assertions.get(effect.remove);
-      if (a) {
-        a.standing = "rewound";
-        a.standingReason = `rewound by conflict resolution at ${pos}`;
-      }
+      if (a) deactivate(st, a, "rewound", `rewound by conflict resolution at ${pos}`);
       conflict.resolution = `rewind: removed ${effect.remove}`;
       break;
     }
@@ -301,10 +303,7 @@ function applyResolution(
     case "new-establishment": {
       for (const id of conflict.members) {
         const a = st.assertions.get(id);
-        if (a && a.standing === "active") {
-          a.standing = "superseded";
-          a.standingReason = `superseded by new establishment at ${pos}`;
-        }
+        if (a && a.standing === "active") deactivate(st, a, "superseded", `superseded by new establishment at ${pos}`);
       }
       addAssertion(st, pos, op.actor, "establishment", effect.proposition, {
         holder: null,
@@ -334,6 +333,7 @@ function eraseWithDescendants(st: CampaignState, target: AssertionId, pos: numbe
     seen.add(id);
     const a = st.assertions.get(id);
     if (!a) continue;
+    if (a.stance === "establishment") st.establishmentBySlot.get(slotOf(a.proposition))?.delete(a.id);
     a.standing = "erased";
     a.standingReason = `${reason} at ${pos}`;
     a.erased = true;
