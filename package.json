@@ -1,0 +1,19 @@
+{
+  "name": "campaign-memory",
+  "version": "0.1.0",
+  "description": "Local-first memory subsystem for long-running TTRPG duet campaigns",
+  "type": "module",
+  "module": "src/index.ts",
+  "private": true,
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
