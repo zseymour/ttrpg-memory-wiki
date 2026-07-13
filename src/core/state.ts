@@ -345,6 +345,17 @@ function eraseWithDescendants(st: CampaignState, target: AssertionId, pos: numbe
       if ((desc.provenance.evidence?.locator ?? "").includes(id)) stack.push(desc.id);
     }
   }
+  // A conflict whose members are no longer both active establishments is no longer
+  // a live continuity conflict: erasing a side resolves it rather than leaving a
+  // stale conflict that references erased material.
+  for (const c of st.conflicts.values()) {
+    if (c.resolvedAt !== null) continue;
+    const live = c.members.filter((m) => st.assertions.get(m)?.standing === "active");
+    if (live.length < 2) {
+      c.resolvedAt = pos;
+      c.resolution = "resolved by erasure of a conflicting member";
+    }
+  }
 }
 
 /** Active grant acts held by an actor, for authority validation. */

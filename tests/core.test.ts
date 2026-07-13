@@ -156,4 +156,14 @@ describe("continuity conflicts (no last-write-wins)", () => {
     expect(st.assertions.get(aid(a))!.standing).toBe("corrected");
     expect(st.assertions.get(aid(b))!.standing).toBe("active");
   });
+
+  test("erasing one side of a conflict resolves it, leaving no stale conflict", () => {
+    const c = newCampaign();
+    establishAnchor(c, "player", "npc-voss", "Maera Voss");
+    const a = assertClaim(c, { actor: "player", stance: "establishment", subject: "npc-voss", attribute: "fate", value: "dead", fictionalTime: 5 });
+    assertClaim(c, { actor: "player", stance: "establishment", subject: "npc-voss", attribute: "fate", value: "alive", fictionalTime: 5 });
+    const conflictId = [...c.state().conflicts.keys()][0]!;
+    c.submit({ kind: "erase", operationId: oid(), actor: "player", target: aid(a) });
+    expect(c.state().conflicts.get(conflictId)!.resolvedAt).not.toBeNull();
+  });
 });

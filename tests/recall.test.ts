@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { lensKey, operationId, type Lens, type RecallRequest } from "../src/index.ts";
+import { assemble, lensKey, operationId, plan, type Lens, type RecallRequest } from "../src/index.ts";
 import { anchor, assertClaim, establishAnchor, newCampaign } from "./helpers.ts";
 import type { Campaign } from "../src/index.ts";
 
@@ -133,5 +133,15 @@ describe("outcomes and vantage", () => {
     const out = c.recall(request(c, [{ kind: "establishment" }], 50));
     if (out.kind !== "result") throw new Error("expected result");
     expect(out.result.conflicts).toHaveLength(1);
+  });
+
+  test("assemble rejects a plan that references a lens outside its request", () => {
+    const c = scenario();
+    const req = request(c, [{ kind: "establishment" }]);
+    const p = plan(req);
+    const tampered = { ...p, paths: [...p.paths, { focal: anchor("npc-voss"), lens: { kind: "player-awareness" } as Lens, required: true, purpose: "x" }] };
+    const out = assemble(tampered, c.state());
+    expect(out.kind).toBe("rejected");
+    if (out.kind === "rejected") expect(out.reason).toContain("invalid plan");
   });
 });

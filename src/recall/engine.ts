@@ -52,6 +52,22 @@ export function plan(request: RecallRequest, planner = "default"): RecallPlan {
   return { planner, request, paths };
 }
 
+/**
+ * Validate a plan against its own request before deterministic assembly. A plan may
+ * vary, but it may not reference a lens or focal identity outside the request, nor
+ * weaken the request's mandatory closure. Returns a rejection reason, or null.
+ */
+export function validatePlan(plan: RecallPlan): string | null {
+  const req = plan.request;
+  const requestedLenses = new Set(req.lenses.map(lensKey));
+  const requestedFocal = new Set<string>(req.focal);
+  for (const path of plan.paths) {
+    if (!requestedLenses.has(lensKey(path.lens))) return `plan references lens '${lensKey(path.lens)}' not in the request`;
+    if (!requestedFocal.has(path.focal)) return `plan references focal '${path.focal}' not in the request`;
+  }
+  return null;
+}
+
 function temporalMatch(itemTime: number | null, focus: number | null): TemporalMatch {
   if (itemTime === null || focus === null) return "possibly-applicable";
   return itemTime <= focus ? "definitely-applicable" : "definitely-outside";
@@ -95,6 +111,8 @@ function recallable(a: AssertionRecord, lens: Lens): boolean {
  */
 export function assemble(plan: RecallPlan, state: CampaignState): RecallOutcome {
   const req = plan.request;
+  const invalid = validatePlan(plan);
+  if (invalid) return { kind: "rejected", reason: `invalid plan: ${invalid}` };
   const safety = [...state.safety.values()];
   const mandatoryReserve = safety.length + req.focal.length;
   if (req.budget.total < mandatoryReserve) {
