@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { assertionIdAt, grantId } from "../src/index.ts";
+import { assertionIdAt, Campaign, grantId, reviveExport } from "../src/index.ts";
 import { aid, assertClaim, establishAnchor, newCampaign, oid } from "./helpers.ts";
 
 describe("acceptance and receipts", () => {
@@ -36,6 +36,21 @@ describe("acceptance and receipts", () => {
     expect(r.disposition).toBe("rejected");
     expect(r.reason).toContain("identity");
     expect(c.head()).toBe(0);
+  });
+
+  test("a precondition holds through an unrelated change and conflicts on a related one", () => {
+    const c = newCampaign();
+    establishAnchor(c, "player", "npc-voss", "Maera Voss");
+    const a = assertClaim(c, { actor: "player", stance: "establishment", subject: "npc-voss", attribute: "status", value: "alive" });
+    const b = assertClaim(c, { actor: "player", stance: "establishment", subject: "npc-voss", attribute: "role", value: "harbormaster" });
+    // an unrelated change to b must not invalidate a proposal preconditioned on a
+    c.submit({ kind: "correct", operationId: oid(), actor: "player", target: aid(b), value: "exile" });
+    const clean = c.submit({ kind: "correct", operationId: oid(), actor: "player", target: aid(a), value: "missing", expect: [{ assertion: aid(a), standing: "active" }] });
+    expect(clean.disposition).toBe("accepted");
+    // but a stale precondition on the now-corrected a conflicts, never overwrites
+    const stale = c.submit({ kind: "correct", operationId: oid(), actor: "player", target: aid(a), value: "fled", expect: [{ assertion: aid(a), standing: "active" }] });
+    expect(stale.disposition).toBe("rejected");
+    expect(stale.reason).toContain("conflict");
   });
 });
 
@@ -104,6 +119,20 @@ describe("derived lifecycle standing", () => {
     const a = assertClaim(c, { actor: "player", stance: "establishment", subject: "npc-voss", attribute: "post", value: "harbormaster", fictionalTime: 1 });
     c.submit({ kind: "supersede", operationId: oid(), actor: "player", target: aid(a), value: "exile", effectiveFrom: 10 });
     expect(c.state().assertions.get(aid(a))!.standing).toBe("superseded");
+  });
+
+  test("an establish -> correct -> supersede -> rewind chain replays with standing at every position", () => {
+    const c = newCampaign();
+    establishAnchor(c, "player", "npc-voss", "Maera Voss");
+    const a = assertClaim(c, { actor: "player", stance: "establishment", subject: "npc-voss", attribute: "rank", value: "member", fictionalTime: 1 });
+    const corr = c.submit({ kind: "correct", operationId: oid(), actor: "player", target: aid(a), value: "apprentice" });
+    const sup = c.submit({ kind: "supersede", operationId: oid(), actor: "player", target: aid(corr), value: "journeyman", effectiveFrom: 10 });
+    c.submit({ kind: "rewind", operationId: oid(), actor: "player", target: aid(sup) });
+    const replayed = Campaign.fromExport(reviveExport(JSON.stringify(c.exportCampaign())));
+    const st = replayed.state();
+    expect(st.assertions.get(aid(a))!.standing).toBe("corrected");
+    expect(st.assertions.get(aid(corr))!.standing).toBe("superseded");
+    expect(st.assertions.get(aid(sup))!.standing).toBe("rewound");
   });
 });
 

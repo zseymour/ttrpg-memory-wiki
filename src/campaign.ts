@@ -11,6 +11,7 @@ import type { Operation } from "./core/operations.ts";
 import { apply, emptyState, replay, type Accepted, type CampaignState } from "./core/state.ts";
 import { validate } from "./core/validate.ts";
 import { exportCampaign, type CampaignExport } from "./core/export.ts";
+import { FileVault, type VaultStore } from "./core/vault.ts";
 import type { RecallOutcome, RecallRequest } from "./recall/contract.ts";
 import { assemble, plan } from "./recall/engine.ts";
 
@@ -32,10 +33,22 @@ export class Campaign {
   private readonly receipts = new Map<OperationId, Receipt>();
   private seq = 0;
   private readonly liveState: CampaignState = emptyState();
+  private readonly store: VaultStore | undefined;
 
-  constructor(id: CampaignId, owner: string) {
+  constructor(id: CampaignId, owner: string, store?: VaultStore) {
     this.id = id;
     this.owner = owner;
+    this.store = store;
+    for (const entry of store?.loadLog() ?? []) {
+      this.log.push(entry);
+      apply(this.liveState, entry);
+    }
+  }
+
+  /** Open (or create) a campaign backed by a durable on-disk vault. */
+  static openVault(vaultPath: string, owner?: string): Campaign {
+    const vault = FileVault.open(vaultPath, owner);
+    return new Campaign(vault.id, vault.owner, vault);
   }
 
   /**
@@ -65,6 +78,7 @@ export class Campaign {
     const entry: Accepted = { op, pos };
     this.log.push(entry);
     apply(this.liveState, entry);
+    this.store?.append(entry); // durable, in establishment order
     const receipt: Receipt = {
       operationId: op.operationId,
       disposition: "accepted",
