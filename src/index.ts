@@ -26,6 +26,6 @@ export { validate, type Rejection } from "./core/validate.ts";
 export { exportCampaign, reviveExport, type CampaignExport } from "./core/export.ts";
 export { FileVault, type VaultStore } from "./core/vault.ts";
 export * from "./recall/contract.ts";
-export { assemble, plan, validatePlan, type RecallPath, type RecallPlan } from "./recall/engine.ts";
+export { assemble, plan, validateLensAuthority, validatePlan, type RecallPath, type RecallPlan } from "./recall/engine.ts";
 export { normalize, pageSha, project, type Manifest, type Projection } from "./projection/project.ts";
 export { applyIntake, compileEdit, type Confidence, type Disposition, type IntakeResult, type Proposal } from "./projection/intake.ts";

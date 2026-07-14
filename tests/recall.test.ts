@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { assemble, lensKey, operationId, plan, type Lens, type RecallRequest } from "../src/index.ts";
+import { assemble, grantId, lensKey, operationId, plan, type Lens, type RecallRequest } from "../src/index.ts";
 import { anchor, assertClaim, establishAnchor, newCampaign } from "./helpers.ts";
 import type { Campaign } from "../src/index.ts";
 
@@ -27,7 +27,7 @@ function scenario(): Campaign {
 }
 
 function request(c: Campaign, lenses: Lens[], total = 50, fictionalTime = 10): RecallRequest {
-  return { situation: "portray-entity", focal: [anchor("npc-voss")], lenses, vantage: { establishmentPos: c.head(), fictionalTime }, budget: { total } };
+  return { situation: "portray-entity", audience: c.owner, focal: [anchor("npc-voss")], lenses, vantage: { establishmentPos: c.head(), fictionalTime }, budget: { total } };
 }
 
 describe("recall qualification and lenses", () => {
@@ -111,7 +111,7 @@ describe("budget and completeness", () => {
 describe("outcomes and vantage", () => {
   test("an unresolvable snapshot is unavailable, not a gap", () => {
     const c = scenario();
-    const out = c.recall({ situation: "x", focal: [anchor("npc-voss")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: 999, fictionalTime: 0 }, budget: { total: 50 } });
+    const out = c.recall({ situation: "x", audience: c.owner, focal: [anchor("npc-voss")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: 999, fictionalTime: 0 }, budget: { total: 50 } });
     expect(out.kind).toBe("unavailable");
   });
 
@@ -120,7 +120,7 @@ describe("outcomes and vantage", () => {
     const pinnedHead = c.head();
     // a later establishment
     assertClaim(c, { actor: "player", stance: "establishment", subject: "npc-voss", attribute: "fate", value: "exiled", fictionalTime: 5 });
-    const out = c.recall({ situation: "x", focal: [anchor("npc-voss")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: pinnedHead, fictionalTime: 10 }, budget: { total: 50 } });
+    const out = c.recall({ situation: "x", audience: c.owner, focal: [anchor("npc-voss")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: pinnedHead, fictionalTime: 10 }, budget: { total: 50 } });
     if (out.kind !== "result") throw new Error("expected result");
     expect(JSON.stringify(out.result)).not.toContain("exiled");
   });
@@ -143,5 +143,73 @@ describe("outcomes and vantage", () => {
     const out = assemble(tampered, c.state());
     expect(out.kind).toBe("rejected");
     if (out.kind === "rejected") expect(out.reason).toContain("invalid plan");
+  });
+});
+
+describe("lens authority gating", () => {
+  // portray governs the perspective lenses (player-awareness, belief, suspicion, entity-awareness);
+  // establish governs the establishment lens. A delegate holds only what its grant names.
+  function grantPortray(c: Campaign, grantee: string): void {
+    c.submit({ kind: "grant-authority", operationId: operationId(`grant-${grantee}`), actor: c.owner, delegate: grantId(`g-${grantee}`), grantee, acts: ["portray"] });
+  }
+  function req(c: Campaign, audience: string, lenses: Lens[]): RecallRequest {
+    return { situation: "gate", audience, focal: [anchor("npc-voss")], lenses, vantage: { establishmentPos: c.head(), fictionalTime: 10 }, budget: { total: 50 } };
+  }
+
+  test("the owner holds root authority over every lens", () => {
+    const c = scenario();
+    const out = c.recall(req(c, c.owner, [{ kind: "establishment" }, { kind: "player-awareness" }, { kind: "entity-belief", holder: anchor("npc-kade") }]));
+    expect(out.kind).toBe("result");
+  });
+
+  test("a delegate may request a lens its grant authorizes", () => {
+    const c = scenario();
+    grantPortray(c, "envoy");
+    const out = c.recall(req(c, "envoy", [{ kind: "entity-belief", holder: anchor("npc-kade") }]));
+    expect(out.kind).toBe("result");
+  });
+
+  test("requesting a lens outside the audience's authority is rejected as invalid, never served empty", () => {
+    const c = scenario();
+    grantPortray(c, "envoy"); // portray does not govern the establishment lens
+    const out = c.recall(req(c, "envoy", [{ kind: "establishment" }]));
+    expect(out.kind).toBe("rejected");
+    if (out.kind !== "rejected") return;
+    expect(out.reason).toContain("establishment");
+    expect(out.reason).toContain("envoy");
+  });
+
+  test("an ungranted audience cannot request any lens", () => {
+    const c = scenario();
+    const out = c.recall(req(c, "stranger", [{ kind: "entity-belief", holder: anchor("npc-kade") }]));
+    expect(out.kind).toBe("rejected");
+  });
+
+  test("one inadmissible lens rejects the whole batch, even alongside admissible ones", () => {
+    const c = scenario();
+    grantPortray(c, "envoy");
+    const out = c.recall(req(c, "envoy", [{ kind: "player-awareness" }, { kind: "establishment" }]));
+    expect(out.kind).toBe("rejected");
+  });
+
+  test("a revoked grant withdraws lens admissibility", () => {
+    const c = scenario();
+    const g = grantId("g-envoy");
+    c.submit({ kind: "grant-authority", operationId: operationId("grant"), actor: c.owner, delegate: g, grantee: "envoy", acts: ["portray"] });
+    expect(c.recall(req(c, "envoy", [{ kind: "player-awareness" }])).kind).toBe("result");
+    c.submit({ kind: "revoke-authority", operationId: operationId("revoke"), actor: c.owner, delegate: g });
+    expect(c.recall(req(c, "envoy", [{ kind: "player-awareness" }])).kind).toBe("rejected");
+  });
+
+  test("current authority gates the request even when the vantage pins a pre-revocation snapshot", () => {
+    const c = scenario();
+    const g = grantId("g-envoy");
+    c.submit({ kind: "grant-authority", operationId: operationId("grant"), actor: c.owner, delegate: g, grantee: "envoy", acts: ["portray"] });
+    const pinned = c.head(); // snapshot where the grant is still active
+    expect(c.recall(req(c, "envoy", [{ kind: "player-awareness" }])).kind).toBe("result");
+    c.submit({ kind: "revoke-authority", operationId: operationId("revoke"), actor: c.owner, delegate: g });
+    // pinning the old vantage must not resurrect access: authorization is present-time
+    const out = c.recall({ situation: "gate", audience: "envoy", focal: [anchor("npc-voss")], lenses: [{ kind: "player-awareness" }], vantage: { establishmentPos: pinned, fictionalTime: 10 }, budget: { total: 50 } });
+    expect(out.kind).toBe("rejected");
   });
 });

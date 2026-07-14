@@ -460,6 +460,16 @@ export function grantedActs(st: CampaignState, grant: GrantId | undefined): Set<
   return g.acts;
 }
 
+/** Every act an actor holds across their active grants, for read-side authority checks. */
+export function heldActs(st: CampaignState, actor: string): Set<Act> {
+  const acts = new Set<Act>();
+  for (const g of st.grants.values()) {
+    if (g.revoked || g.grantee !== actor) continue;
+    for (const act of g.acts) acts.add(act);
+  }
+  return acts;
+}
+
 /**
  * Resolve a retract target across the three retractable stores (assertion, artifact,
  * ruling). Their id spaces are disjoint, so at most one store holds the target; a

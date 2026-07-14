@@ -28,7 +28,7 @@ function seed(c: Campaign) {
 }
 
 function recallRole(c: Campaign): string | undefined {
-  const out = c.recall({ situation: "probe", focal: [anchorId("voss")], lenses: [EST], vantage: { establishmentPos: c.head(), fictionalTime: 100 }, budget: { total: 50 } });
+  const out = c.recall({ situation: "probe", audience: c.owner, focal: [anchorId("voss")], lenses: [EST], vantage: { establishmentPos: c.head(), fictionalTime: 100 }, budget: { total: 50 } });
   if (out.kind !== "result") return undefined;
   return out.result.lenses[lensKey(EST)]!.find((i) => i.qualification.attribute === "role")?.value;
 }
@@ -45,7 +45,7 @@ describe("durable vault (#14)", () => {
   test("recall returns the establishment with identity, standing, and vantage", () => {
     const c = Campaign.openVault(tmpVault(), "player");
     seed(c);
-    const out = c.recall({ situation: "probe", focal: [anchorId("voss")], lenses: [EST], vantage: { establishmentPos: c.head(), fictionalTime: 100 }, budget: { total: 50 } });
+    const out = c.recall({ situation: "probe", audience: c.owner, focal: [anchorId("voss")], lenses: [EST], vantage: { establishmentPos: c.head(), fictionalTime: 100 }, budget: { total: 50 } });
     if (out.kind !== "result") throw new Error("expected result");
     const item = out.result.lenses[lensKey(EST)]!.find((i) => i.qualification.attribute === "role")!;
     expect(item.value).toBe("harbormaster");
@@ -88,7 +88,7 @@ describe("durable vault (#14)", () => {
     a.submit({ kind: "assert", operationId: operationId("a2"), actor: "player", stance: "establishment", proposition: { subject: anchorId("voss"), attribute: "role", value: "ALPHA-ROLE" }, fictionalTime: 1 });
     const b = Campaign.openVault(tmpVault(), "player");
     b.submit({ kind: "establish-anchor", operationId: operationId("b1"), actor: "player", anchor: anchorId("voss"), label: "Beta Voss" });
-    const out = b.recall({ situation: "probe", focal: [anchorId("voss")], lenses: [EST], vantage: { establishmentPos: b.head(), fictionalTime: 100 }, budget: { total: 50 } });
+    const out = b.recall({ situation: "probe", audience: b.owner, focal: [anchorId("voss")], lenses: [EST], vantage: { establishmentPos: b.head(), fictionalTime: 100 }, budget: { total: 50 } });
     if (out.kind !== "result") throw new Error("expected result");
     expect(JSON.stringify(out.result)).not.toContain("ALPHA-ROLE");
     expect(a.id).not.toBe(b.id);

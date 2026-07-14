@@ -14,7 +14,7 @@ import { validate } from "./core/validate.ts";
 import { exportCampaign, type CampaignExport } from "./core/export.ts";
 import { FileVault, type VaultStore } from "./core/vault.ts";
 import type { RecallOutcome, RecallRequest } from "./recall/contract.ts";
-import { assemble, plan } from "./recall/engine.ts";
+import { assemble, plan, validateLensAuthority } from "./recall/engine.ts";
 
 export class Campaign {
   readonly id: CampaignId;
@@ -97,6 +97,10 @@ export class Campaign {
     if (pos < 0 || pos > this.log.length) {
       return { kind: "unavailable", reason: `no trustworthy snapshot at establishment position ${pos}` };
     }
+    // Authorization is a present-time gate: the audience's *current* authority governs
+    // which lenses it may request, even when the vantage pins content to an older snapshot.
+    const denied = validateLensAuthority(request, this.liveState, this.owner);
+    if (denied) return { kind: "rejected", reason: denied };
     const snapshot = pos === this.log.length ? this.liveState : replay(this.log.slice(0, pos));
     return assemble(plan(request), snapshot);
   }

@@ -26,6 +26,7 @@ const EST: Lens = { kind: "establishment" };
 function recall(c: Campaign, focal: string[], lenses: Lens[], extra: Partial<{ ft: number; total: number; expectations: { anchor: string; attribute: string }[] }> = {}): RecallResult {
   const out: RecallOutcome = c.recall({
     situation: "test",
+    audience: c.owner,
     focal: focal.map(anchor),
     lenses,
     vantage: { establishmentPos: c.head(), fictionalTime: extra.ft ?? 1000 },

@@ -52,7 +52,7 @@ describe("failure catalog", () => {
     establishAnchor(c, "player", "e", "Entity");
     assertClaim(c, { actor: "player", stance: "establishment", subject: "e", attribute: "secret", value: "HIDDEN" });
     assertClaim(c, { actor: "player", stance: "player-awareness", subject: "e", attribute: "public", value: "known" });
-    const out = c.recall({ situation: "x", focal: [anchor("e")], lenses: [{ kind: "player-awareness" }], vantage: { establishmentPos: c.head(), fictionalTime: 10 }, budget: { total: 50 } });
+    const out = c.recall({ situation: "x", audience: c.owner, focal: [anchor("e")], lenses: [{ kind: "player-awareness" }], vantage: { establishmentPos: c.head(), fictionalTime: 10 }, budget: { total: 50 } });
     if (out.kind !== "result") throw new Error("expected result");
     expect(JSON.stringify(out.result)).not.toContain("HIDDEN");
   });
@@ -72,7 +72,7 @@ describe("failure catalog", () => {
     for (let i = 0; i < 10; i++) {
       assertClaim(c, { actor: "player", stance: "establishment", subject: "e", attribute: `a${i}`, value: `v${i}` });
     }
-    const out = c.recall({ situation: "x", focal: [anchor("e")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: c.head(), fictionalTime: 10 }, budget: { total: 4 } });
+    const out = c.recall({ situation: "x", audience: c.owner, focal: [anchor("e")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: c.head(), fictionalTime: 10 }, budget: { total: 4 } });
     if (out.kind !== "result") throw new Error("expected result");
     expect(out.result.complete).toBe(false);
     expect(out.result.spent).toBeLessThanOrEqual(4);
@@ -86,7 +86,7 @@ describe("failure catalog", () => {
     assertClaim(a, { actor: "player", stance: "establishment", subject: "e", attribute: "x", value: "ALPHA-ONLY" });
     const b = newCampaign("player");
     establishAnchor(b, "player", "e", "Beta Entity"); // same anchor id string
-    const out = b.recall({ situation: "x", focal: [anchor("e")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: b.head(), fictionalTime: 10 }, budget: { total: 50 } });
+    const out = b.recall({ situation: "x", audience: b.owner, focal: [anchor("e")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: b.head(), fictionalTime: 10 }, budget: { total: 50 } });
     if (out.kind !== "result") throw new Error("expected result");
     expect(JSON.stringify(out.result)).not.toContain("ALPHA-ONLY");
     expect(a.id).not.toBe(b.id);
@@ -97,7 +97,7 @@ describe("failure catalog", () => {
     establishAnchor(c, "player", "e", "Entity");
     assertClaim(c, { actor: "player", stance: "establishment", subject: "e", attribute: "secret", value: "LEAK" });
     // request the player lens with a tight budget so gaps are produced
-    const out = c.recall({ situation: "x", focal: [anchor("e")], lenses: [{ kind: "player-awareness" }], vantage: { establishmentPos: c.head(), fictionalTime: 10 }, budget: { total: 1 } });
+    const out = c.recall({ situation: "x", audience: c.owner, focal: [anchor("e")], lenses: [{ kind: "player-awareness" }], vantage: { establishmentPos: c.head(), fictionalTime: 10 }, budget: { total: 1 } });
     if (out.kind !== "result") throw new Error("expected result");
     for (const g of out.result.gaps) expect(JSON.stringify(g)).not.toContain("LEAK");
   });
@@ -112,7 +112,7 @@ describe("failure catalog", () => {
     // both anchors and both distinct notes survive as separate records
     const st = c.state();
     expect(st.anchors.size).toBe(2);
-    const ra = c.recall({ situation: "x", focal: [anchor("a")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: c.head(), fictionalTime: 10 }, budget: { total: 50 } });
+    const ra = c.recall({ situation: "x", audience: c.owner, focal: [anchor("a")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: c.head(), fictionalTime: 10 }, budget: { total: 50 } });
     if (ra.kind !== "result") throw new Error("expected result");
     expect(ra.result.lenses["establishment"]!.some((i) => i.value === "A-ONLY")).toBe(true);
     // the other anchor's value is NOT merged into this one

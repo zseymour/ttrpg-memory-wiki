@@ -52,7 +52,7 @@ describe("replay reproduces authoritative meaning", () => {
     expect(rst.artifacts.size).toBe(c.state().artifacts.size);
     expect(rst.rulings.size).toBe(c.state().rulings.size);
     // recall envelope reproduces identity equivalence, artifact, and ruling
-    const out = replayed.recall({ situation: "x", focal: [anchor("envoy"), anchor("duel")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: replayed.head(), fictionalTime: 10 }, budget: { total: 50 } });
+    const out = replayed.recall({ situation: "x", audience: replayed.owner, focal: [anchor("envoy"), anchor("duel")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: replayed.head(), fictionalTime: 10 }, budget: { total: 50 } });
     if (out.kind !== "result") throw new Error("expected result");
     expect(out.result.equivalences).toHaveLength(1);
     expect(out.result.artifacts).toHaveLength(1);
@@ -75,7 +75,7 @@ describe("erasure removes content from the record itself", () => {
     expect(rec.standing).toBe("erased"); // continuity tombstone remains
     expect(rec.effectiveValue).toBe(""); // content does not resurface
 
-    const out = replayed.recall({ situation: "x", focal: [anchor("npc-voss")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: replayed.head(), fictionalTime: 10 }, budget: { total: 50 } });
+    const out = replayed.recall({ situation: "x", audience: replayed.owner, focal: [anchor("npc-voss")], lenses: [{ kind: "establishment" }], vantage: { establishmentPos: replayed.head(), fictionalTime: 10 }, budget: { total: 50 } });
     if (out.kind !== "result") throw new Error("expected result");
     expect(out.result.lenses[lensKey({ kind: "establishment" })]).toHaveLength(0);
     expect(JSON.stringify(out.result)).not.toContain("SENSITIVE-CONTENT");

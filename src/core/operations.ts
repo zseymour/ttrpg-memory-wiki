@@ -173,20 +173,28 @@ export type Act =
   | "maintain" // correct/retract/supersede/rewind
   | "resolve"; // resolve continuity conflicts
 
+/** The act governing a stance: authoring it when writing, consulting its lens when reading. */
+export function stanceAct(stance: Stance): Act {
+  switch (stance) {
+    case "establishment":
+      return "establish";
+    case "preparation":
+      return "prepare";
+    case "belief":
+    case "suspicion":
+    case "entity-awareness":
+    case "player-awareness":
+      return "portray";
+  }
+}
+
 /** The act an operation requires the actor to hold authority for. */
 export function requiredAct(op: Operation): Act | "owner-only" | null {
   switch (op.kind) {
     case "establish-anchor":
       return "establish";
     case "assert":
-      switch (op.stance) {
-        case "establishment":
-          return "establish";
-        case "preparation":
-          return "prepare";
-        default:
-          return "portray";
-      }
+      return stanceAct(op.stance);
     case "establish-artifact":
     case "link-artifact":
       return "organize";

@@ -47,6 +47,7 @@ export interface RecallOpts {
 export function recallResult(c: Campaign, focal: AnchorId[], lenses: Lens[], opts: RecallOpts = {}): RecallResult | null {
   const out = c.recall({
     situation: "probe",
+    audience: c.owner,
     focal,
     lenses,
     vantage: { establishmentPos: opts.pos ?? c.head(), fictionalTime: opts.ft ?? 1_000_000 },

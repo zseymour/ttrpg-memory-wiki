@@ -99,6 +99,8 @@ export function epistemicSeparation(w: World): Probe[] {
   // a BELIEF of equivalence between the confusable Corvins must not resolve their identity
   w.equivalence(corvinA, corvinB, { stance: "belief", holder: kade, ft: 1 });
   w.noise(2);
+  // a delegate granted only portray: authorized for perspective lenses, never establishment
+  w.grant(grantId("e-grant-portrayer"), "portrayer", ["portray"]);
 
   return [
     probe("epistemic-separation", "belief lens reports belief, not established truth", [], () => {
@@ -126,6 +128,18 @@ export function epistemicSeparation(w: World): Probe[] {
     probe("epistemic-separation", "preparation never appears in the establishment lens", [], () => {
       const r = recallResult(w.campaign, [voss], [EST]);
       return r !== null && absentEverywhere(r, "PrepOnlyBackstory");
+    }),
+    probe("epistemic-separation", "a portray delegate may consult a perspective lens it is authorized for", [], () => {
+      const out = w.campaign.recall({ situation: "probe", audience: "portrayer", focal: [voss], lenses: [belief(kade)], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 50 } });
+      return out.kind === "result";
+    }),
+    probe("epistemic-separation", "a lens outside the audience's authority is rejected, never served empty", [], () => {
+      const out = w.campaign.recall({ situation: "probe", audience: "portrayer", focal: [voss], lenses: [EST], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 50 } });
+      return out.kind === "rejected";
+    }),
+    probe("epistemic-separation", "an ungranted audience cannot request any lens", [], () => {
+      const out = w.campaign.recall({ situation: "probe", audience: "outsider", focal: [voss], lenses: [PLAYER], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 50 } });
+      return out.kind === "rejected";
     }),
     probe("epistemic-separation", "confusable same-named entities are not conflated", [], () => {
       const ra = recallResult(w.campaign, [corvinA], [EST]);
@@ -329,16 +343,16 @@ export function boundedRelevantRecall(w: World): Probe[] {
 
   return [
     probe("bounded-relevant-recall", "over-budget recall returns a critical prefix and a gap, not a dump", ["context-stuffing"], () => {
-      const out = w.campaign.recall({ situation: "probe", focal: [voss], lenses: [EST], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 4 } });
+      const out = w.campaign.recall({ situation: "probe", audience: w.campaign.owner, focal: [voss], lenses: [EST], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 4 } });
       if (out.kind !== "result") return false;
       return !out.result.complete && out.result.spent <= 4 && out.result.gaps.length > 0;
     }),
     probe("bounded-relevant-recall", "an infeasible mandatory reserve is rejected without assembly", [], () => {
-      const out = w.campaign.recall({ situation: "probe", focal: [voss], lenses: [EST], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 0 } });
+      const out = w.campaign.recall({ situation: "probe", audience: w.campaign.owner, focal: [voss], lenses: [EST], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 0 } });
       return out.kind === "rejected";
     }),
     probe("bounded-relevant-recall", "a safety boundary is represented before task material", [], () => {
-      const out = w.campaign.recall({ situation: "probe", focal: [voss], lenses: [EST], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 2 } });
+      const out = w.campaign.recall({ situation: "probe", audience: w.campaign.owner, focal: [voss], lenses: [EST], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 2 } });
       return out.kind === "result" && out.result.safety.some((s) => s.id === "b-safety");
     }),
     probe("bounded-relevant-recall", "recall-critical material survives a tight budget over relevant bulk", ["similarity-only-recall"], () => {
@@ -353,12 +367,12 @@ export function boundedRelevantRecall(w: World): Probe[] {
     probe("bounded-relevant-recall", "a gap never names lens-excluded or erased material", ["naive-gap-reporting"], () => {
       // reserve (safety + focal) fits, but the player item is omitted, producing a gap;
       // the gap must never name the hidden establishment excluded from this lens
-      const out = w.campaign.recall({ situation: "probe", focal: [voss], lenses: [PLAYER], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 2 } });
+      const out = w.campaign.recall({ situation: "probe", audience: w.campaign.owner, focal: [voss], lenses: [PLAYER], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 2 } });
       if (out.kind !== "result") return false;
       return out.result.gaps.length > 0 && out.result.gaps.every((gp) => !JSON.stringify(gp).includes("HiddenFromPlayerLeak"));
     }),
     probe("bounded-relevant-recall", "an incomplete result carries zero enrichment", [], () => {
-      const out = w.campaign.recall({ situation: "probe", focal: [voss], lenses: [EST], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 3 } });
+      const out = w.campaign.recall({ situation: "probe", audience: w.campaign.owner, focal: [voss], lenses: [EST], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 3 } });
       return out.kind === "result" && !out.result.complete && out.result.omissionManifest.length === 0;
     }),
   ];

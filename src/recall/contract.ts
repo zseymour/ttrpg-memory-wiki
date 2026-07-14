@@ -25,20 +25,26 @@ export function lensKey(lens: Lens): string {
   return "holder" in lens ? `${lens.kind}:${lens.holder}` : lens.kind;
 }
 
-/** The stance a lens admits, paired with an optional required holder. */
-export function lensAdmits(lens: Lens, stance: Stance, holder: AnchorId | null): boolean {
+/** The single stance a lens is a compartment for. Its authority governs the lens. */
+export function lensStance(lens: Lens): Stance {
   switch (lens.kind) {
     case "establishment":
-      return stance === "establishment";
+      return "establishment";
     case "player-awareness":
-      return stance === "player-awareness";
+      return "player-awareness";
     case "entity-belief":
-      return stance === "belief" && holder === lens.holder;
+      return "belief";
     case "entity-suspicion":
-      return stance === "suspicion" && holder === lens.holder;
+      return "suspicion";
     case "entity-awareness":
-      return stance === "entity-awareness" && holder === lens.holder;
+      return "entity-awareness";
   }
+}
+
+/** Whether a lens admits an assertion: same compartment, and matching holder for perspective lenses. */
+export function lensAdmits(lens: Lens, stance: Stance, holder: AnchorId | null): boolean {
+  if (stance !== lensStance(lens)) return false;
+  return !("holder" in lens) || holder === lens.holder;
 }
 
 export interface Vantage {
@@ -55,6 +61,12 @@ export interface Budget {
 
 export interface RecallRequest {
   situation: string;
+  /**
+   * The epistemic audience the recall is for. Authority gates which lenses this
+   * consumer may request; the campaign owner holds root authority over every lens.
+   * Never implicit — a request without a fixed audience has no admissible perspective.
+   */
+  audience: string;
   focal: AnchorId[];
   lenses: Lens[];
   vantage: Vantage;
