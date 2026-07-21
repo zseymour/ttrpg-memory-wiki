@@ -162,6 +162,22 @@ export function epistemicSeparation(w: World): Probe[] {
       if (est === null || believed === null) return false;
       return est.equivalences.length === 0 && believed.equivalences.length === 1 && present(est, EST, "trade", "CorvinA-Blacksmith") && absentEverywhere(est, "CorvinB-Assassin");
     }),
+    probe("epistemic-separation", "an ambiguous selector gaps and never merges the confusable Corvins", ["merge-on-alias"], () => {
+      const out = w.campaign.recall({ situation: "probe", audience: w.campaign.owner, focal: [], selectors: ["Corvin Vale"], lenses: [EST], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 50 } });
+      if (out.kind !== "result") return false;
+      const gap = out.result.gaps.find((g) => g.requirement === "recall-selector");
+      return gap !== undefined && gap.reason.includes("ambiguous") && absentEverywhere(out.result, "CorvinA-Blacksmith") && absentEverywhere(out.result, "CorvinB-Assassin");
+    }),
+    probe("epistemic-separation", "an equivalence yields a followable reference that never bleeds the paired identity's material", ["merge-on-alias"], () => {
+      const out = w.campaign.recall({ situation: "probe", audience: w.campaign.owner, focal: [envoy], lenses: [EST], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 5000 } });
+      if (out.kind !== "result") return false;
+      // the paired identity's material never bleeds into the envoy recall, but a reference offers deeper inspection
+      const ref = out.result.references.find((r) => r.target === duke);
+      if (ref === undefined || !absentEverywhere(out.result, "DukeWardenNorth")) return false;
+      // following it retains the parent snapshot and returns the paired identity's own material
+      const child = w.campaign.follow(ref, { audience: w.campaign.owner, budget: { total: 5000 } });
+      return child.kind === "result" && child.result.vantage.establishmentPos === ref.vantage.establishmentPos && present(child.result, EST, "office", "DukeWardenNorth");
+    }),
   ];
 }
 

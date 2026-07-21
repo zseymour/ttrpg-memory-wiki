@@ -9,7 +9,7 @@
  * in items, references, omission manifests, counts, or gap wording.
  */
 
-import type { AnchorId, ArtifactId, AssertionId, RulingId } from "../core/ids.ts";
+import type { AnchorId, ArtifactId, AssertionId, CampaignId, RulingId } from "../core/ids.ts";
 import type { SafetyBoundary, Stance, Uncertainty } from "../core/operations.ts";
 import type { Standing } from "../core/state.ts";
 
@@ -69,6 +69,20 @@ export interface RecallRequest {
   audience: string;
   focal: AnchorId[];
   lenses: Lens[];
+  /**
+   * Human-facing names, aliases, or titles submitted for resolution to stable
+   * referential anchors at the vantage. Resolution reads only referential identity;
+   * a believed, suspected, or provisional equivalence never authorizes it. A selector
+   * that matches no anchor, or more than one, produces a Recall gap — never a
+   * planner-chosen entity and never a fuzzy merge.
+   */
+  selectors?: string[];
+  /**
+   * Non-authoritative play-context hints (transcript references, mentioned names,
+   * task-local statements). They may guide enrichment relevance but confer no
+   * standing and cannot alter identity, authority, or current state.
+   */
+  seeds?: string[];
   vantage: Vantage;
   budget: Budget;
   /**
@@ -124,6 +138,40 @@ export interface OmissionManifest {
   considered: number;
   included: number;
   cutoff: string;
+}
+
+/**
+ * A typed route for deeper inspection, bound to its campaign, vantage, lens, and
+ * target, followed through a separately budgeted child request. It retains the
+ * parent snapshot rather than following latest; a child may narrow but not silently
+ * broaden, and moving to a newer vantage requires an explicit rebase.
+ */
+export interface RecallReference {
+  campaign: CampaignId;
+  /** The parent snapshot, retained by a child request unless an explicit rebase moves it. */
+  vantage: Vantage;
+  /** The epistemic lens this reference was surfaced under; a child may not broaden it. */
+  lens: Lens;
+  /** The referential anchor a child request inspects more deeply. */
+  target: AnchorId;
+  /** The permitted child situation (e.g. portray-entity). */
+  operation: string;
+}
+
+/** A separately budgeted follow of a Recall reference. Narrows inherited constraints, never broadens. */
+export interface ChildRecallRequest {
+  audience: string;
+  situation?: string;
+  /** Must be a subset of the reference target; defaults to it. Broadening is rejected. */
+  focal?: AnchorId[];
+  /** Must be a subset of the reference lens; defaults to it. Broadening is rejected. */
+  lenses?: Lens[];
+  /** Independently allocated; the parent budget is not shared. */
+  budget: Budget;
+  expectations?: { anchor: AnchorId; attribute: string }[];
+  seeds?: string[];
+  /** An explicit move to a newer vantage. Absent, the parent snapshot is retained. */
+  rebase?: Vantage;
 }
 
 export interface SurfacedConflict {
@@ -186,6 +234,10 @@ export interface RecallResult {
   rulings: RecallRuling[];
   /** Explicit Unrecorded answers for requested expectations with no qualifying assertion. */
   unrecorded: RecallUnrecorded[];
+  /** Fully qualified enrichment, admitted only after closure fits; never affects completeness. */
+  enrichment: RecallItem[];
+  /** Typed routes for deeper inspection via separately budgeted child requests. */
+  references: RecallReference[];
   gaps: RecallGap[];
   omissionManifest: OmissionManifest[];
   /** Spent vs. total budget, for honest work-factor inspection. */

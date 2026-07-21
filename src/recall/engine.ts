@@ -7,9 +7,14 @@
  * each represented or explicitly gapped before any enrichment could spend budget.
  * Over-budget returns the priority-ordered critical prefix with gaps and zero
  * enrichment; an infeasible mandatory reserve is rejected without full assembly.
+ *
+ * Enrichment is optional, fully qualified, related-identity material admitted only
+ * after closure fits, through an inspectable deterministic order; it never displaces
+ * recall-critical material and never affects completeness. Recall references offer
+ * deeper inspection through separately budgeted child requests at the parent snapshot.
  */
 
-import type { AnchorId, AssertionId } from "../core/ids.ts";
+import type { AnchorId, AssertionId, CampaignId } from "../core/ids.ts";
 import { IDENTITY_EQUIVALENCE, isEquivalence, stanceAct, type Provenance } from "../core/operations.ts";
 import { heldActs, type AssertionRecord, type CampaignState } from "../core/state.ts";
 import {
@@ -23,6 +28,7 @@ import {
   type RecallItem,
   type RecallOutcome,
   type RecallQualification,
+  type RecallReference,
   type RecallRequest,
   type RecallResult,
   type RecallRuling,
@@ -34,6 +40,7 @@ import {
 export interface RecallPath {
   focal: AnchorId;
   lens: Lens;
+  /** Required paths cover the vantage or gap; enrichment paths are optional and never gap. */
   required: boolean;
   purpose: string;
 }
@@ -41,35 +48,119 @@ export interface RecallPath {
 export interface RecallPlan {
   planner: string;
   request: RecallRequest;
+  /** Effective focus: explicitly named focal plus resolved selectors, de-duplicated. */
+  focal: AnchorId[];
   paths: RecallPath[];
+  /** Gaps for selectors that resolved to zero or many anchors; recorded at plan time. */
+  selectorGaps: RecallGap[];
+}
+
+function normalizeName(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 /**
- * Lens-bound planning. Deterministic here (focal × lens), but only the *plan* is
- * produced — no content is exposed to planning, so it cannot be omniscient-then-filtered.
+ * Resolve human-facing selectors to stable referential anchors at the snapshot.
+ * Matching reads only anchor labels (referential identity) — never a believed,
+ * suspected, or provisional equivalence. A selector matching no anchor, or more than
+ * one, yields a Recall gap and contributes no focus: never a planner-chosen entity,
+ * never a fuzzy merge.
  */
-export function plan(request: RecallRequest, planner = "default"): RecallPlan {
-  const paths: RecallPath[] = [];
-  for (const focal of request.focal) {
-    for (const lens of request.lenses) {
-      paths.push({ focal, lens, required: true, purpose: `task material for ${focal} under ${lensKey(lens)}` });
+function resolveSelectors(request: RecallRequest, state: CampaignState): { anchors: AnchorId[]; gaps: RecallGap[] } {
+  const anchors: AnchorId[] = [];
+  const gaps: RecallGap[] = [];
+  for (const raw of request.selectors ?? []) {
+    const name = normalizeName(raw);
+    const matches: AnchorId[] = [];
+    for (const [id, rec] of state.anchors) {
+      if (normalizeName(rec.label) === name) matches.push(id);
+    }
+    if (matches.length === 1) {
+      anchors.push(matches[0]!);
+    } else if (matches.length === 0) {
+      gaps.push({
+        requirement: "recall-selector",
+        lens: null,
+        vantage: request.vantage,
+        reason: `selector '${raw}' resolves to no referential anchor at the vantage`,
+        scope: raw,
+        consequence: "cannot recall material for an unresolved selector",
+        remediation: "correct the selector or establish the anchor, then request by anchor id",
+      });
+    } else {
+      gaps.push({
+        requirement: "recall-selector",
+        lens: null,
+        vantage: request.vantage,
+        reason: `selector '${raw}' is ambiguous: ${matches.length} referential anchors share this name`,
+        scope: raw,
+        consequence: "an ambiguous selector is never merged or resolved to a single entity",
+        remediation: `disambiguate by requesting a focal anchor id directly (candidates: ${matches.join(", ")})`,
+      });
     }
   }
-  return { planner, request, paths };
+  return { anchors, gaps };
 }
 
 /**
- * Validate a plan against its own request before deterministic assembly. A plan may
- * vary, but it may not reference a lens or focal identity outside the request, nor
- * weaken the request's mandatory closure. Returns a rejection reason, or null.
+ * The deterministic resolved focus and selector gaps for a request at a snapshot:
+ * explicitly named focal plus resolved selectors, de-duplicated in a stable order.
+ * Identity resolution is not planner discretion, so plan and validatePlan share it —
+ * a recorded plan whose focus or selector gaps disagree with this is tampered.
  */
-export function validatePlan(plan: RecallPlan): string | null {
+function resolveFocus(request: RecallRequest, state: CampaignState): { focal: AnchorId[]; selectorGaps: RecallGap[] } {
+  const { anchors: resolved, gaps } = resolveSelectors(request, state);
+  const focal: AnchorId[] = [];
+  const seen = new Set<string>();
+  for (const f of [...request.focal, ...resolved]) {
+    if (seen.has(f)) continue;
+    seen.add(f);
+    focal.push(f);
+  }
+  return { focal, selectorGaps: gaps };
+}
+
+/**
+ * Lens-bound planning. Reads only referential identity (anchor labels) to resolve
+ * selectors — never assertion content, so it cannot be omniscient-then-filtered. The
+ * plan is deterministic in its inputs and, once validated, assembles deterministically.
+ */
+export function plan(request: RecallRequest, state: CampaignState, planner = "default"): RecallPlan {
+  const { focal, selectorGaps } = resolveFocus(request, state);
+  const paths: RecallPath[] = [];
+  for (const f of focal) {
+    for (const lens of request.lenses) {
+      const key = lensKey(lens);
+      // Per focus × lens: a required task-material path and an optional enrichment path.
+      // Enrichment is nominated deterministically, admitted only after closure fits.
+      paths.push({ focal: f, lens, required: true, purpose: `task material for ${f} under ${key}` });
+      paths.push({ focal: f, lens, required: false, purpose: `related-identity enrichment for ${f} under ${key}` });
+    }
+  }
+  return { planner, request, focal, paths, selectorGaps };
+}
+
+/**
+ * Validate a plan before deterministic assembly. Planning may vary in which paths it
+ * emits, but focus and selector gaps are deterministic identity resolution, not planner
+ * discretion: re-derive them from the request and snapshot so a recorded plan cannot
+ * inject an unrequested focus or drop a selector gap. A plan also may not reference a
+ * lens outside the request. Returns a rejection reason, or null.
+ */
+export function validatePlan(plan: RecallPlan, state: CampaignState): string | null {
   const req = plan.request;
+  const { focal, selectorGaps } = resolveFocus(req, state);
+  if (plan.focal.length !== focal.length || plan.focal.some((f, i) => f !== focal[i])) {
+    return "plan focus does not match the request's resolved referential anchors";
+  }
+  if (JSON.stringify(plan.selectorGaps) !== JSON.stringify(selectorGaps)) {
+    return "plan selector gaps do not match deterministic selector resolution";
+  }
   const requestedLenses = new Set(req.lenses.map(lensKey));
-  const requestedFocal = new Set<string>(req.focal);
+  const planFocal = new Set<string>(plan.focal);
   for (const path of plan.paths) {
     if (!requestedLenses.has(lensKey(path.lens))) return `plan references lens '${lensKey(path.lens)}' not in the request`;
-    if (!requestedFocal.has(path.focal)) return `plan references focal '${path.focal}' not in the request`;
+    if (!planFocal.has(path.focal)) return `plan references focal '${path.focal}' not in the plan focus`;
   }
   return null;
 }
@@ -137,19 +228,45 @@ function recallable(a: AssertionRecord, lens: Lens): boolean {
 }
 
 /**
+ * Anchors co-organized with `focal` by an active structured artifact (a thread or
+ * open question). Artifacts organize related-but-distinct material and confer no
+ * standing, so this relatedness graph never merges identities — an identity
+ * equivalence, by contrast, surfaces its own envelope and a follow-able reference,
+ * never a silent content bleed. Focal anchors are excluded: their own material is
+ * required task material, not enrichment.
+ */
+function relatedByArtifact(state: CampaignState, focal: AnchorId, focalSet: Set<AnchorId>): Set<AnchorId> {
+  const out = new Set<AnchorId>();
+  for (const art of state.artifacts.values()) {
+    if (art.standing !== "active") continue;
+    const members = art.links.map((l) => {
+      const t = l.target as AnchorId | AssertionId;
+      return state.anchors.has(t as AnchorId) ? (t as AnchorId) : (state.assertions.get(t as AssertionId)?.proposition.subject ?? null);
+    });
+    if (!members.includes(focal)) continue;
+    for (const m of members) {
+      if (m === null || m === focal || focalSet.has(m)) continue;
+      out.add(m);
+    }
+  }
+  return out;
+}
+
+/**
  * Assemble a validated plan against a snapshot state. `state` must already be the
  * derived state at the plan's vantage snapshot; Campaign binds that snapshot.
+ * `campaign` binds the references so a child request can be checked against it.
  */
-export function assemble(plan: RecallPlan, state: CampaignState): RecallOutcome {
+export function assemble(plan: RecallPlan, state: CampaignState, campaign: CampaignId): RecallOutcome {
   const req = plan.request;
-  const invalid = validatePlan(plan);
+  const invalid = validatePlan(plan, state);
   if (invalid) return { kind: "rejected", reason: `invalid plan: ${invalid}` };
   const safety = [...state.safety.values()];
-  const mandatoryReserve = safety.length + req.focal.length;
+  const mandatoryReserve = safety.length + plan.focal.length;
   if (req.budget.total < mandatoryReserve) {
     return {
       kind: "rejected",
-      reason: `mandatory reserve (${mandatoryReserve}: ${safety.length} safety + ${req.focal.length} focal) exceeds budget ${req.budget.total}`,
+      reason: `mandatory reserve (${mandatoryReserve}: ${safety.length} safety + ${plan.focal.length} focal) exceeds budget ${req.budget.total}`,
     };
   }
 
@@ -163,6 +280,8 @@ export function assemble(plan: RecallPlan, state: CampaignState): RecallOutcome 
     artifacts: [],
     rulings: [],
     unrecorded: [],
+    enrichment: [],
+    references: [],
     gaps: [],
     omissionManifest: [],
     spent: 0,
@@ -175,6 +294,10 @@ export function assemble(plan: RecallPlan, state: CampaignState): RecallOutcome 
     result.gaps.push(g);
   };
 
+  // Selector resolution failures are recorded at plan time; an unresolved or ambiguous
+  // selector is a gap in the focus, never a planner-chosen merge.
+  for (const g of plan.selectorGaps) gap(g);
+
   // Tier 0 — control and safety boundaries (mandatory, within reserve).
   for (const b of safety) {
     result.safety.push(b);
@@ -182,7 +305,7 @@ export function assemble(plan: RecallPlan, state: CampaignState): RecallOutcome 
   }
 
   // Tier 1 — focal identity and lens guards.
-  for (const focal of req.focal) {
+  for (const focal of plan.focal) {
     if (!state.anchors.has(focal)) {
       gap({
         requirement: "focal-identity",
@@ -199,7 +322,7 @@ export function assemble(plan: RecallPlan, state: CampaignState): RecallOutcome 
   }
 
   // Tier 2 — applicable lifecycle effects and material conflicts touching the focus.
-  const focalSet = new Set(req.focal);
+  const focalSet = new Set(plan.focal);
   for (const c of state.conflicts.values()) {
     if (c.resolvedAt !== null) continue;
     const touchesFocus = c.members.some((id) => {
@@ -223,8 +346,9 @@ export function assemble(plan: RecallPlan, state: CampaignState): RecallOutcome 
     spent++;
   }
 
-  // Tier 3 — task material, per lens, deterministic by establishment order.
+  // Tier 3 — task material, per required path, deterministic by establishment order.
   for (const path of plan.paths) {
+    if (!path.required) continue;
     const key = lensKey(path.lens);
     const bucket = result.lenses[key];
     if (!bucket) continue;
@@ -264,7 +388,9 @@ export function assemble(plan: RecallPlan, state: CampaignState): RecallOutcome 
   }
 
   // Tier 3 (identity) — equivalences touching the focus, per admitting lens. Records
-  // are never merged: each anchor keeps its own identity and history.
+  // are never merged: each anchor keeps its own identity and history. Each surfaced
+  // equivalence also yields a Recall reference to inspect the paired identity deeper.
+  const refSeen = new Set<string>();
   for (const a of state.assertions.values()) {
     if (!isEquivalence(a.proposition)) continue;
     if (a.standing !== "active" || a.erased) continue;
@@ -292,6 +418,13 @@ export function assemble(plan: RecallPlan, state: CampaignState): RecallOutcome 
       qualification: qualify(state, a, lens, req.vantage),
     } satisfies RecallEquivalence);
     spent++;
+    for (const target of [other, subj]) {
+      if (focalSet.has(target)) continue;
+      const rk = `${target}::${lensKey(lens)}`;
+      if (refSeen.has(rk)) continue;
+      refSeen.add(rk);
+      result.references.push({ campaign, vantage: req.vantage, lens, target, operation: "portray-entity" });
+    }
   }
 
   // Tier 3 (answers) — explicit Unrecorded for requested expectations with no
@@ -394,8 +527,49 @@ export function assemble(plan: RecallPlan, state: CampaignState): RecallOutcome 
     spent++;
   }
 
-  // Enrichment tier is admitted only when closure is complete. No enrichment
-  // source exists in this core; an incomplete result therefore carries none.
+  // Enrichment tier — admitted only when recall-critical closure is complete. It is
+  // fully qualified, never displaces critical material, and never affects completeness.
+  // Each enrichment path emits an omission manifest accounting for its bounded space
+  // over lens-admissible candidates only, so no manifest enumerates excluded or erased
+  // material. When closure is incomplete, zero enrichment is admitted and none is reported.
+  if (result.complete) {
+    const enriched = new Set<AssertionId>();
+    for (const path of plan.paths) {
+      if (path.required) continue;
+      const related = relatedByArtifact(state, path.focal, focalSet);
+      const candidates: AssertionRecord[] = [];
+      for (const a of state.assertions.values()) {
+        if (!related.has(a.proposition.subject)) continue;
+        if (isEquivalence(a.proposition)) continue;
+        if (!recallable(a, path.lens)) continue;
+        if (enriched.has(a.id)) continue;
+        candidates.push(a);
+      }
+      let included = 0;
+      for (const a of candidates) {
+        if (spent >= req.budget.total) break;
+        result.enrichment.push({
+          assertion: a.id,
+          value: a.effectiveValue,
+          qualification: qualify(state, a, path.lens, req.vantage),
+        } satisfies RecallItem);
+        enriched.add(a.id);
+        included++;
+        spent++;
+      }
+      // Only an actually-nominated space is worth an omission manifest; a path with no
+      // candidates bounded nothing to report.
+      if (candidates.length > 0) {
+        result.omissionManifest.push({
+          path: path.purpose,
+          considered: candidates.length,
+          included,
+          cutoff: included < candidates.length ? "budget-exhausted" : "fully-included",
+        });
+      }
+    }
+  }
+
   result.spent = spent;
   return result.gaps.length > 0 || !result.complete
     ? { kind: "result", result: { ...result, complete: false } }

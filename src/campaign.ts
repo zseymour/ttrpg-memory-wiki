@@ -13,7 +13,7 @@ import { apply, emptyState, replay, type Accepted, type CampaignState } from "./
 import { validate } from "./core/validate.ts";
 import { exportCampaign, type CampaignExport } from "./core/export.ts";
 import { FileVault, type VaultStore } from "./core/vault.ts";
-import type { RecallOutcome, RecallRequest } from "./recall/contract.ts";
+import { lensKey, type ChildRecallRequest, type RecallOutcome, type RecallReference, type RecallRequest } from "./recall/contract.ts";
 import { assemble, plan, validateLensAuthority } from "./recall/engine.ts";
 
 export class Campaign {
@@ -102,7 +102,55 @@ export class Campaign {
     const denied = validateLensAuthority(request, this.liveState, this.owner);
     if (denied) return { kind: "rejected", reason: denied };
     const snapshot = pos === this.log.length ? this.liveState : replay(this.log.slice(0, pos));
-    return assemble(plan(request), snapshot);
+    return assemble(plan(request, snapshot), snapshot, this.id);
+  }
+
+  /**
+   * Follow a Recall reference through a separately budgeted child request. The child
+   * retains the parent snapshot — an explicit rebase is required to move to a newer
+   * vantage — and may narrow but never silently broaden the reference's focal or lens.
+   * The child audience is re-gated for authority like any other request.
+   */
+  follow(reference: RecallReference, child: ChildRecallRequest): RecallOutcome {
+    if (reference.campaign !== this.id) {
+      return { kind: "rejected", reason: "recall reference is bound to a different campaign" };
+    }
+    const focal = child.focal ?? [reference.target];
+    if (!focal.every((f) => f === reference.target)) {
+      return { kind: "rejected", reason: "child request broadens focal beyond the reference target" };
+    }
+    const lenses = child.lenses ?? [reference.lens];
+    const referenceLens = lensKey(reference.lens);
+    if (!lenses.every((l) => lensKey(l) === referenceLens)) {
+      return { kind: "rejected", reason: "child request broadens the lens beyond the reference" };
+    }
+    // The permitted operation is one of the reference's bound dimensions: a child may
+    // reuse it but not silently swap it for another situation.
+    if (child.situation !== undefined && child.situation !== reference.operation) {
+      return { kind: "rejected", reason: "child request broadens the permitted operation of the reference" };
+    }
+    // Expectations are scoped to the target: probing another anchor's recorded/Unrecorded
+    // status would silently widen the reference beyond its target.
+    if ((child.expectations ?? []).some((e) => e.anchor !== reference.target)) {
+      return { kind: "rejected", reason: "child request broadens beyond the reference target via expectations" };
+    }
+    let vantage = reference.vantage;
+    if (child.rebase) {
+      if (child.rebase.establishmentPos < reference.vantage.establishmentPos) {
+        return { kind: "rejected", reason: "an explicit rebase must target a newer vantage, not an older snapshot" };
+      }
+      vantage = child.rebase;
+    }
+    return this.recall({
+      situation: child.situation ?? reference.operation,
+      audience: child.audience,
+      focal,
+      lenses,
+      vantage,
+      budget: child.budget,
+      expectations: child.expectations,
+      seeds: child.seeds,
+    });
   }
 
   exportCampaign(): CampaignExport {
