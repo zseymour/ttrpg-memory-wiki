@@ -167,6 +167,28 @@ export function auxiliaryProbes(seed: number): Probe[] {
       },
     },
     {
+      family: "human-editability",
+      name: "[aux] rewound content re-added by a bypass edit is held, never silently returned",
+      kills: ["rewound-return"],
+      check: () => {
+        const w = new World({ seed, scale: 3, campaign: `rewound-${seed}` });
+        const v = w.anchor("r-voss", "Voss");
+        const note = w.establishment(v, "note", "She commands the harbor guard in secret.");
+        w.rewind(w.id(note));
+        const { text, manifest } = project(w.campaign.id, w.campaign.state(), v, { reveal: true });
+        // the player re-types the rewound content as a new paragraph
+        const edited = text + "\nShe commands the harbor guard in secret.\n";
+        const result = compileEdit(manifest, edited);
+        const proposal = result.proposals.find((p) => p.kind === "assert-note");
+        const dispositions = applyIntake(w.campaign, manifest, result, "player");
+        const disp = dispositions.find((d) => d.proposal.kind === "assert-note");
+        const returned = [...w.campaign.state().assertions.values()].some(
+          (a) => a.standing === "active" && a.effectiveValue.includes("harbor guard"),
+        );
+        return proposal?.confidence === "ambiguous" && disp?.outcome === "held" && !returned;
+      },
+    },
+    {
       family: "epistemic-separation",
       name: "[aux] recalled instruction-like content is inert data, not a control channel",
       kills: [],

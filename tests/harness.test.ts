@@ -26,6 +26,7 @@ const EXPECTED_KILLS: CatalogId[] = [
   "projection-as-record",
   "byte-diff-as-edit",
   "auto-accepted-intake",
+  "rewound-return",
   "merge-on-alias",
 ];
 

@@ -1,5 +1,5 @@
 /**
- * The 21-entry failure catalog. Every plausible shortcut implementation the spec
+ * The 22-entry failure catalog. Every plausible shortcut implementation the spec
  * names must be killed by at least one probe. Entries whose killing subsystem is
  * not yet built are marked `pendingSubsystem` so coverage accounting stays honest:
  * an entry is either killed by a probe or explicitly pending a named slice.
@@ -26,7 +26,8 @@ export type CatalogId =
   | "auto-accepted-intake"
   | "context-stuffing"
   | "cross-campaign-bleed"
-  | "eager-cache-retention";
+  | "eager-cache-retention"
+  | "rewound-return";
 
 export interface CatalogEntry {
   id: CatalogId;
@@ -57,4 +58,5 @@ export const FAILURE_CATALOG: readonly CatalogEntry[] = [
   { id: "context-stuffing", description: "over-budget recall dumps relevance instead of a critical prefix" },
   { id: "cross-campaign-bleed", description: "ids, facts, or embeddings leak between campaigns" },
   { id: "eager-cache-retention", description: "erased/tightened material survives in retained recall", pendingSubsystem: "recall derived-view retention" },
+  { id: "rewound-return", description: "rewound content silently returns to play via a bypass edit" },
 ];

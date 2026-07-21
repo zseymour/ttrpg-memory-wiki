@@ -12,7 +12,8 @@
 import type { Campaign } from "../campaign.ts";
 import type { Receipt } from "../core/receipt.ts";
 import { operationId, type AssertionId } from "../core/ids.ts";
-import { normalize, pageSha, type Manifest } from "./project.ts";
+import type { AssertionRecord, CampaignState } from "../core/state.ts";
+import { contentFingerprint, NOTE_ATTRIBUTE, normalize, pageSha, project, SHIELD, type Manifest } from "./project.ts";
 
 export type Confidence = "mechanical" | "inferred" | "ambiguous";
 
@@ -114,6 +115,9 @@ export function compileEdit(manifest: Manifest, editedText: string): IntakeResul
   const parsed = parsePage(editedText);
   const notes = [...parsed.errors];
   const proposals: Proposal[] = [];
+  // A value whose fingerprint matches rewound establishment content is a resurrection:
+  // rewound content must not silently return to play, so re-adding it is held, not dropped.
+  const resurrects = (attribute: string, value: string) => manifest.rewound.includes(contentFingerprint(attribute, value));
 
   if (parsed.frontmatter["basis"] !== undefined && parsed.frontmatter["basis"] !== String(manifest.basis)) {
     notes.push(`page declares basis ${parsed.frontmatter["basis"]}, manifest basis is ${manifest.basis}; preconditions taken from the manifest`);
@@ -136,12 +140,21 @@ export function compileEdit(manifest: Manifest, editedText: string): IntakeResul
     if (!(attribute in parsed.frontmatter)) {
       proposals.push({ kind: "retract-field", confidence: "ambiguous", assertion, attribute, note: `field ${attribute} removed: retraction or accident?` });
     } else if (parsed.frontmatter[attribute] !== value) {
-      proposals.push({ kind: "correct-field", confidence: "mechanical", assertion, attribute, value: parsed.frontmatter[attribute]!, note: "" });
+      const edited = parsed.frontmatter[attribute]!;
+      if (resurrects(attribute, edited)) {
+        proposals.push({ kind: "correct-field", confidence: "ambiguous", assertion, attribute, value: edited, note: `field ${attribute} corrected to rewound content (must not return to play); held for confirmation` });
+      } else {
+        proposals.push({ kind: "correct-field", confidence: "mechanical", assertion, attribute, value: edited, note: "" });
+      }
     }
   }
   for (const [key, value] of Object.entries(parsed.frontmatter)) {
     if (!RESERVED.has(key) && !(key in manifest.fields)) {
-      proposals.push({ kind: "assert-field", confidence: "inferred", attribute: key, value, note: `new frontmatter field ${key}` });
+      if (resurrects(key, value)) {
+        proposals.push({ kind: "assert-field", confidence: "ambiguous", attribute: key, value, note: `field ${key} re-adds rewound content (must not return to play); held for confirmation` });
+      } else {
+        proposals.push({ kind: "assert-field", confidence: "inferred", attribute: key, value, note: `new frontmatter field ${key}` });
+      }
     }
   }
 
@@ -154,11 +167,20 @@ export function compileEdit(manifest: Manifest, editedText: string): IntakeResul
     if (!(id in parsed.notes)) {
       proposals.push({ kind: "retract-note", confidence: "ambiguous", assertion: id as AssertionId, note: `note block ${id} missing: retraction or accidental deletion?` });
     } else if (parsed.notes[id] !== projected) {
-      proposals.push({ kind: "correct-note", confidence: "mechanical", assertion: id as AssertionId, value: parsed.notes[id]!, note: "" });
+      const edited = parsed.notes[id]!;
+      if (resurrects(NOTE_ATTRIBUTE, edited)) {
+        proposals.push({ kind: "correct-note", confidence: "ambiguous", assertion: id as AssertionId, value: edited, note: "note corrected to rewound content (must not return to play); held for confirmation" });
+      } else {
+        proposals.push({ kind: "correct-note", confidence: "mechanical", assertion: id as AssertionId, value: edited, note: "" });
+      }
     }
   }
   for (const para of parsed.untagged) {
-    proposals.push({ kind: "assert-note", confidence: "inferred", value: para, note: "untagged paragraph under ## Notes" });
+    if (resurrects(NOTE_ATTRIBUTE, para)) {
+      proposals.push({ kind: "assert-note", confidence: "ambiguous", value: para, note: "paragraph re-adds rewound content (must not return to play); held for confirmation" });
+    } else {
+      proposals.push({ kind: "assert-note", confidence: "inferred", value: para, note: "untagged paragraph under ## Notes" });
+    }
   }
 
   if (proposals.length === 0 && notes.length === 0) {
@@ -205,7 +227,55 @@ export function applyIntake(campaign: Campaign, manifest: Manifest, result: Inta
         dispositions.push({ proposal, outcome: "held", reason: "not auto-applicable" });
         continue;
     }
-    dispositions.push({ proposal, outcome: receipt.disposition, reason: receipt.reason, receipt });
+    let reason = receipt.reason;
+    if (receipt.disposition === "rejected" && (proposal.kind === "correct-field" || proposal.kind === "correct-note")) {
+      // Name both positions: what the edit proposes and what the record now holds. The
+      // current value is read leak-safely — a region shielded since basis is named as the
+      // shield marker, never its content, so the conflict message discloses nothing.
+      const current = currentPosition(campaign, manifest, proposal);
+      reason = `conflict: this edit proposes ${JSON.stringify(proposal.value)}, but the record moved past projection basis ${manifest.basis} and now holds ${JSON.stringify(current)}; reproject and re-apply to reconcile (${receipt.reason})`;
+    }
+    dispositions.push({ proposal, outcome: receipt.disposition, reason, receipt });
   }
   return dispositions;
+}
+
+/**
+ * The record's current value for a corrected region, for the second half of a
+ * stale-basis conflict message. Reprojected with the basis's reveal setting and
+ * read through that projection, so a region shielded since basis is named as the
+ * shield marker rather than leaking its content.
+ */
+function currentPosition(
+  campaign: Campaign,
+  manifest: Manifest,
+  proposal: Extract<Proposal, { kind: "correct-field" | "correct-note" }>,
+): string {
+  const state = campaign.state();
+  const { manifest: now } = project(manifest.campaign, state, manifest.anchor, { reveal: manifest.reveal });
+  if (proposal.kind === "correct-field") {
+    if (now.shielded.fields.includes(proposal.attribute)) return SHIELD;
+    return now.fields[proposal.attribute]?.value ?? "(no longer recorded)";
+  }
+  const succ = activeSuccessor(state, proposal.assertion);
+  if (!succ) return "(no longer recorded)";
+  if (now.shielded.blocks.includes(succ.id)) return SHIELD;
+  return now.blocks[succ.id] ?? SHIELD;
+}
+
+/**
+ * Follow the correction chain forward from a deactivated assertion to its active
+ * successor. A correction records the predecessor's position in the successor's
+ * priorValues, so the link survives the id change a correction introduces.
+ */
+function activeSuccessor(state: CampaignState, id: AssertionId): AssertionRecord | undefined {
+  let cur = state.assertions.get(id);
+  const seen = new Set<AssertionId>();
+  while (cur && cur.standing !== "active") {
+    if (seen.has(cur.id)) return undefined;
+    seen.add(cur.id);
+    const pos = cur.pos;
+    cur = [...state.assertions.values()].find((a) => a.priorValues.some((pv) => pv.pos === pos));
+  }
+  return cur?.standing === "active" ? cur : undefined;
 }

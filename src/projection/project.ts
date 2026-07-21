@@ -23,7 +23,7 @@ import type { AnchorId, AssertionId } from "../core/ids.ts";
 import type { Stance } from "../core/operations.ts";
 import type { AssertionRecord, CampaignState } from "../core/state.ts";
 
-const NOTE_ATTRIBUTE = "note";
+export const NOTE_ATTRIBUTE = "note";
 
 /** Rendered in place of unrevealed content. A shielded region discloses that it exists, not what it says. */
 export const SHIELD = "«unrevealed»";
@@ -42,6 +42,13 @@ export interface Manifest {
   blocks: Record<string, string>;
   /** Regions rendered as a shield marker rather than their content. */
   shielded: { fields: string[]; blocks: string[] };
+  /**
+   * Content fingerprints (sha of normalized text) of rewound establishment
+   * assertions for this anchor. Rewound content must not return to play, so an
+   * edit that re-adds a matching value is flagged rather than silently
+   * re-established. Fingerprints, never the content, so the manifest leaks nothing.
+   */
+  rewound: string[];
 }
 
 export interface Projection {
@@ -65,6 +72,14 @@ export function normalize(text: string): string {
     .filter((p) => p.length > 0)
     .join("\n\n");
 }
+
+/**
+ * Attribute-scoped content fingerprint: a leak-safe identity for a region's value,
+ * shared by the projection (recording rewound content) and edit intake (detecting a
+ * bypass edit that re-adds it). Scoped by attribute so an unrelated field sharing a
+ * value is not mistaken for a resurrection.
+ */
+export const contentFingerprint = (attribute: string, value: string): string => sha(`${attribute}\u0000${normalize(value)}`);
 
 const propKey = (a: AssertionRecord): string =>
   `${a.proposition.subject}::${a.proposition.attribute}::${a.effectiveValue}`;
@@ -148,11 +163,18 @@ export function project(campaign: string, state: CampaignState, anchor: AnchorId
   lines.push(...perspectiveSection(state, "Suspicions", byStance("suspicion"), shieldable));
   lines.push(...perspectiveSection(state, "Awareness", byStance("entity-awareness"), shieldable));
 
+  // Rewound establishment content for this anchor, fingerprinted so intake can flag an
+  // edit that re-adds it. Rewind keeps the value intact (unlike erase), so the fingerprint
+  // is meaningful; only the fingerprint is retained, never the content itself.
+  const rewound = [...state.assertions.values()]
+    .filter((a) => a.stance === "establishment" && a.standing === "rewound" && a.proposition.subject === anchor)
+    .map((a) => contentFingerprint(a.proposition.attribute, a.effectiveValue));
+
   const text = lines.join("\n");
 
   return {
     text,
-    manifest: { campaign, anchor, basis: state.head, sha: sha(text), label, reveal, fields, blocks, shielded },
+    manifest: { campaign, anchor, basis: state.head, sha: sha(text), label, reveal, fields, blocks, shielded, rewound },
   };
 }
 
