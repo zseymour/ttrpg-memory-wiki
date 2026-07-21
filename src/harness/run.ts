@@ -94,9 +94,9 @@ export function auxiliaryProbes(seed: number): Probe[] {
         const w = new World({ seed, scale: 5, campaign: `erase-${seed}` });
         const voss = w.anchor("z-voss", "Voss");
         const secret = w.establishment(voss, "trauma", "SENSITIVE-XYZ", { ft: 1 });
-        // a descendant whose provenance evidence references the secret's assertion id
+        // a disclosure descendant: its provenance derives from the secret's assertion id
         const derived = w.establishment(voss, "note", "DERIVED-NOTE", {
-          provenance: { introducedBy: "player", evidence: { locator: `derived from ${w.id(secret)}`, excerpt: "e" } },
+          provenance: { introducedBy: "player", support: [{ source: w.id(secret), relation: "disclosure" }] },
         });
         w.erase(w.id(secret));
         const exported = JSON.stringify(w.campaign.exportCampaign());
@@ -205,6 +205,62 @@ export function auxiliaryProbes(seed: number): Probe[] {
         // the instruction cannot alter authority: an ungranted audience is still rejected
         const authorityUnchanged = w.campaign.recall({ ...req, audience: "outsider" }).kind === "rejected";
         return surfacedAsData && noExtraLens && authorityUnchanged;
+      },
+    },
+    {
+      family: "evolvability",
+      name: "[aux] erasure traces claim-scoped provenance: disclosures erased, independent support survives with a gap",
+      kills: ["container-provenance", "soft-delete"],
+      check: () => {
+        const w = new World({ seed, scale: 5, campaign: `prov-${seed}` });
+        const voss = w.anchor("pv-voss", "Voss");
+        const secret = w.establishment(voss, "trauma", "SECRET-PROV", { ft: 1 });
+        // two claims on the same anchor ("page"), but claim-scoped provenance decides their fate
+        const disclosure = w.establishment(voss, "note", "DISCLOSES-SECRET", {
+          provenance: { introducedBy: "player", support: [{ source: w.id(secret), relation: "disclosure" }] },
+        });
+        const independent = w.establishment(voss, "demeanor", "guarded at the docks", {
+          provenance: { introducedBy: "player", evidence: { locator: "obs-1", excerpt: "seen" }, support: [{ source: w.id(secret), relation: "independent" }] },
+        });
+        w.erase(w.id(secret));
+        const st = w.campaign.state();
+        const disc = st.assertions.get(w.id(disclosure))!;
+        const ind = st.assertions.get(w.id(independent))!;
+        const r = recallResult(w.campaign, [voss], [EST]);
+        return (
+          disc.erased && // disclosure descendant erased with the secret
+          !ind.erased && ind.standing === "active" && ind.effectiveValue === "guarded at the docks" && // independent survives
+          ind.provenance.gap !== undefined && // with a visible provenance gap
+          r !== null &&
+          absentEverywhere(r, "SECRET-PROV") &&
+          absentEverywhere(r, "DISCLOSES-SECRET") &&
+          present(r, EST, "demeanor", "guarded at the docks")
+        );
+      },
+    },
+    {
+      family: "evolvability",
+      name: "[aux] a concurrent erasure or tightened boundary invalidates an in-flight recall before disclosure",
+      kills: ["eager-cache-retention"],
+      check: () => {
+        const w = new World({ seed, scale: 5, campaign: `inflight-${seed}` });
+        const voss = w.anchor("if-voss", "Voss");
+        const secret = w.establishment(voss, "trauma", "INFLIGHT-SECRET", { ft: 1 });
+        const req = { situation: "probe", audience: w.campaign.owner, focal: [voss], lenses: [EST], vantage: { establishmentPos: w.head(), fictionalTime: 1000 }, budget: { total: 50 } };
+        const prepared = w.campaign.prepareRecall(req);
+        if (prepared.kind !== "prepared") return false;
+        // control: with no intervening op the same prepared recall discloses the secret
+        const before = w.campaign.disclose(prepared);
+        if (before.kind !== "result" || !present(before.result, EST, "trauma", "INFLIGHT-SECRET")) return false;
+        // a concurrent erasure lands between validation and disclosure
+        w.erase(w.id(secret));
+        const afterErase = w.campaign.disclose(prepared);
+        // a concurrent tightened safety boundary is likewise a present-time override
+        const prepared2 = w.campaign.prepareRecall(req);
+        if (prepared2.kind !== "prepared") return false;
+        w.safety("sb-inflight", "captivity");
+        const afterTighten = w.campaign.disclose(prepared2);
+        return afterErase.kind === "invalidated" && afterTighten.kind === "invalidated";
       },
     },
   ];

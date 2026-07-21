@@ -8,7 +8,7 @@
  * under it); no database, so a synced copy is readable anywhere.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { campaignId, type CampaignId } from "./ids.ts";
 import type { Accepted } from "./state.ts";
@@ -25,6 +25,11 @@ export interface VaultStore {
   readonly root: string;
   loadLog(): Accepted[];
   append(entry: Accepted): void;
+  /**
+   * Atomically replace the entire on-disk log — used to compact erased content out
+   * of the durable authoritative record so a synced copy converges to it.
+   */
+  rewriteLog(entries: readonly Accepted[]): void;
 }
 
 interface VaultManifest {
@@ -75,5 +80,16 @@ export class FileVault implements VaultStore {
   /** Append one accepted operation as a durable JSONL line, in establishment order. */
   append(entry: Accepted): void {
     appendFileSync(this.logPath, `${JSON.stringify(entry)}\n`);
+  }
+
+  /**
+   * Atomically rewrite the whole log by writing a sibling temp file and renaming it
+   * over the log, so a reader or interrupted sync never observes a partial record.
+   */
+  rewriteLog(entries: readonly Accepted[]): void {
+    const body = entries.map((entry) => `${JSON.stringify(entry)}\n`).join("");
+    const tmp = `${this.logPath}.tmp`;
+    writeFileSync(tmp, body);
+    renameSync(tmp, this.logPath);
   }
 }

@@ -7,7 +7,7 @@
  * the recall contract, and export/replay.
  */
 
-export { Campaign } from "./campaign.ts";
+export { Campaign, type PreparedRecall } from "./campaign.ts";
 export { type Receipt } from "./core/receipt.ts";
 export * from "./core/ids.ts";
 export * from "./core/operations.ts";
@@ -23,7 +23,7 @@ export {
   type Standing,
 } from "./core/state.ts";
 export { validate, type Rejection } from "./core/validate.ts";
-export { exportCampaign, reviveExport, type CampaignExport } from "./core/export.ts";
+export { compactErased, exportCampaign, reviveExport, type CampaignExport } from "./core/export.ts";
 export { FileVault, type VaultStore } from "./core/vault.ts";
 export * from "./recall/contract.ts";
 export { assemble, plan, validateLensAuthority, validatePlan, type RecallPath, type RecallPlan } from "./recall/engine.ts";

@@ -42,12 +42,28 @@ export type Uncertainty =
   | { kind: "unrecorded" }
   | { kind: "provisional" };
 
+/**
+ * A claim-scoped derivation link: prior support this claim rests on, classified so
+ * Erasure knows whether the claim discloses the source (and must go with it) or
+ * merely rests partly on it (and survives with a Provenance gap).
+ */
+export interface SupportLink {
+  source: AssertionId;
+  /**
+   * "disclosure": the claim reveals the source's content and is erased or rewritten with it.
+   * "independent": the claim stands on its own; erasing the source leaves a Provenance gap.
+   */
+  relation: "disclosure" | "independent";
+}
+
 /** Claim-scoped provenance: who introduced the stance and its narrow support. */
 export interface Provenance {
   introducedBy: string;
   mode?: EstablishmentMode;
   /** Bounded claim evidence: a narrow excerpt + stable locator, never a transcript. */
   evidence?: { locator: string; excerpt: string };
+  /** Derivation links to prior support this claim rests on; the graph Erasure traces. */
+  support?: SupportLink[];
   /** Explicit indication that prior support is unavailable or erased. */
   gap?: string;
 }

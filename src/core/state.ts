@@ -414,17 +414,21 @@ function applyResolution(
 }
 
 /**
- * Erasure: destructive content removal that traces semantic descendants. The
- * assertion remains addressable as a non-revealing tombstone so continuity holds,
- * but its content is gone from state (and, via export compaction, from the record).
+ * Erasure: destructive content removal that traces the claim-scoped Provenance
+ * support graph. The erased assertion stays addressable as a non-revealing
+ * tombstone so continuity holds, but its content is gone from state (and, via log
+ * compaction and export, from the record). A descendant linked by a "disclosure"
+ * relation reveals the erased content and is erased with it; an independently
+ * supported descendant survives with a visible Provenance gap where the erased
+ * support was, keeping its standing.
  */
 function eraseWithDescendants(st: CampaignState, target: AssertionId, pos: number, reason: string): void {
-  const seen = new Set<AssertionId>();
+  const erased = new Set<AssertionId>();
   const stack: AssertionId[] = [target];
   while (stack.length) {
     const id = stack.pop()!;
-    if (seen.has(id)) continue;
-    seen.add(id);
+    if (erased.has(id)) continue;
+    erased.add(id);
     const a = st.assertions.get(id);
     if (!a) continue;
     if (a.stance === "establishment") st.establishmentBySlot.get(slotOf(a.proposition))?.delete(a.id);
@@ -435,9 +439,23 @@ function eraseWithDescendants(st: CampaignState, target: AssertionId, pos: numbe
     a.proposition = { ...a.proposition, value: "" };
     a.priorValues = [];
     a.provenance = { introducedBy: "-", gap: "erased" };
+    // A disclosure descendant reveals this content, so it is erased with it.
     for (const desc of st.assertions.values()) {
-      if ((desc.provenance.evidence?.locator ?? "").includes(id)) stack.push(desc.id);
+      if (desc.erased) continue;
+      if ((desc.provenance.support ?? []).some((s) => s.relation === "disclosure" && s.source === id)) stack.push(desc.id);
     }
+  }
+  // Independently supported material survives: drop the erased support links and
+  // leave a visible Provenance gap in their place, never fabricating replacement.
+  for (const a of st.assertions.values()) {
+    if (a.erased || !a.provenance.support) continue;
+    const kept = a.provenance.support.filter((s) => !erased.has(s.source));
+    if (kept.length === a.provenance.support.length) continue;
+    a.provenance = {
+      ...a.provenance,
+      support: kept.length ? kept : undefined,
+      gap: a.provenance.gap ?? "erased support removed; independently supported",
+    };
   }
   // A conflict whose members are no longer both active establishments is no longer
   // a live continuity conflict: erasing a side resolves it rather than leaving a

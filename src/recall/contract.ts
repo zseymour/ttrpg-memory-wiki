@@ -247,4 +247,7 @@ export interface RecallResult {
 export type RecallOutcome =
   | { kind: "rejected"; reason: string }
   | { kind: "unavailable"; reason: string }
+  // A recall in flight between plan validation and disclosure, aborted before any
+  // disclosure by a newly accepted Erasure or tightened Safety boundary.
+  | { kind: "invalidated"; reason: string }
   | { kind: "result"; result: RecallResult };

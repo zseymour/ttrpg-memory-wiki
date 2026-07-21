@@ -42,7 +42,7 @@ export const FAILURE_CATALOG: readonly CatalogEntry[] = [
   { id: "lens-as-filter-tag", description: "a lens is a display filter, not a real compartment" },
   { id: "mutable-status-flag", description: "lifecycle standing is an editable field, not derived" },
   { id: "timestamp-as-precedence", description: "wall-clock or submission time decides truth precedence" },
-  { id: "container-provenance", description: "provenance attaches to a page, not claim-scoped", pendingSubsystem: "provenance support graph" },
+  { id: "container-provenance", description: "provenance attaches to a page, not claim-scoped" },
   { id: "soft-delete", description: "erasure hides content instead of removing it" },
   { id: "import-as-truth", description: "importing a source establishes its content as truth", pendingSubsystem: "source import" },
   { id: "merge-on-alias", description: "a shared name or asserted equivalence merges two distinct entities" },
@@ -57,6 +57,6 @@ export const FAILURE_CATALOG: readonly CatalogEntry[] = [
   { id: "auto-accepted-intake", description: "ambiguous edits are auto-accepted without confirmation" },
   { id: "context-stuffing", description: "over-budget recall dumps relevance instead of a critical prefix" },
   { id: "cross-campaign-bleed", description: "ids, facts, or embeddings leak between campaigns" },
-  { id: "eager-cache-retention", description: "erased/tightened material survives in retained recall", pendingSubsystem: "recall derived-view retention" },
+  { id: "eager-cache-retention", description: "erased/tightened material survives in retained recall" },
   { id: "rewound-return", description: "rewound content silently returns to play via a bypass edit" },
 ];

@@ -39,8 +39,17 @@ function erasedPositions(log: readonly Accepted[]): Set<number> {
 /** Blank every value-bearing field of an operation, preserving its structure. */
 function redact(op: Operation): Operation {
   switch (op.kind) {
-    case "assert":
-      return { ...op, proposition: { ...op.proposition, value: "" }, provenance: undefined, uncertainty: undefined };
+    case "assert": {
+      // Keep the non-revealing derivation links (opaque ids, no content) so a replayed
+      // compacted log can still trace disclosure descendants and re-erase them to tombstones.
+      const support = op.provenance?.support;
+      return {
+        ...op,
+        proposition: { ...op.proposition, value: "" },
+        provenance: support ? { introducedBy: "-", support } : undefined,
+        uncertainty: undefined,
+      };
+    }
     case "correct":
     case "supersede":
       return { ...op, value: "" };
@@ -54,6 +63,17 @@ function redact(op: Operation): Operation {
   }
 }
 
+/**
+ * Compact a log for erasure: entries at erased positions keep their operation
+ * structure (so replay preserves standing, order, and continuity tombstones) but
+ * shed every value-bearing field. Reused for both Campaign export and the durable
+ * on-disk log rewrite, so both converge to the same erased-content-free record.
+ */
+export function compactErased(log: readonly Accepted[]): Accepted[] {
+  const erased = erasedPositions(log);
+  return log.map((entry) => (erased.has(entry.pos) ? { pos: entry.pos, op: redact(entry.op) } : entry));
+}
+
 /** Serialize a campaign's authoritative record, compacting out erased content. */
 export function exportCampaign(
   campaign: string,
@@ -61,10 +81,7 @@ export function exportCampaign(
   log: readonly Accepted[],
   receipts: readonly Receipt[],
 ): CampaignExport {
-  const erased = erasedPositions(log);
-  const compacted = log.map((entry) =>
-    erased.has(entry.pos) ? { pos: entry.pos, op: redact(entry.op) } : entry,
-  );
+  const compacted = compactErased(log);
   return { version: 1, campaign, owner, log: compacted, receipts: [...receipts] };
 }
 

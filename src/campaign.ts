@@ -11,12 +11,22 @@ import type { Operation } from "./core/operations.ts";
 import { acceptedReceipt, type Receipt } from "./core/receipt.ts";
 import { apply, emptyState, replay, type Accepted, type CampaignState } from "./core/state.ts";
 import { validate } from "./core/validate.ts";
-import { exportCampaign, type CampaignExport } from "./core/export.ts";
+import { compactErased, exportCampaign, type CampaignExport } from "./core/export.ts";
 import { FileVault, type VaultStore } from "./core/vault.ts";
 import { lensKey, type ChildRecallRequest, type RecallOutcome, type RecallReference, type RecallRequest } from "./recall/contract.ts";
-import { assemble, plan, validateLensAuthority } from "./recall/engine.ts";
-import { materialize, type Materialization } from "./projection/materialize.ts";
+import { assemble, plan, validateLensAuthority, validatePlan, type RecallPlan } from "./recall/engine.ts";
+import { materialize, projectionExists, type Materialization } from "./projection/materialize.ts";
 import type { ProjectOptions } from "./projection/project.ts";
+
+/**
+ * A recall that has passed authority gating and plan validation against an immutable
+ * snapshot pinned at its vantage, awaiting disclosure. `safetyBasis` is the head at
+ * validation; a later Erasure or tightened Safety boundary invalidates it on disclose.
+ */
+export type PreparedRecall =
+  | { kind: "rejected"; reason: string }
+  | { kind: "unavailable"; reason: string }
+  | { kind: "prepared"; plan: RecallPlan; snapshot: CampaignState; safetyBasis: number };
 
 export class Campaign {
   readonly id: CampaignId;
@@ -26,6 +36,10 @@ export class Campaign {
   private seq = 0;
   private readonly liveState: CampaignState = emptyState();
   private readonly store: VaultStore | undefined;
+  // Track whether derived pages exist on disk, so an Erasure re-projects (purging
+  // stale content) rather than creating pages the campaign never materialized.
+  private materialized = false;
+  private lastMaterializeOpts: ProjectOptions = {};
 
   constructor(id: CampaignId, owner: string, store?: VaultStore) {
     this.id = id;
@@ -38,6 +52,9 @@ export class Campaign {
       apply(this.liveState, entry);
       this.receipts.set(entry.op.operationId, acceptedReceipt(entry.op.operationId, entry.pos, ++this.seq));
     }
+    // Derived pages left by a prior session must be re-projected on Erasure, so a
+    // reopened vault that already has them is treated as materialized.
+    if (store && projectionExists(store.root)) this.materialized = true;
   }
 
   /** Open (or create) a campaign backed by a durable on-disk vault. */
@@ -74,9 +91,24 @@ export class Campaign {
     this.log.push(entry);
     apply(this.liveState, entry);
     this.store?.append(entry); // durable, in establishment order
+    // A destructive Erasure must reach the durable record and derived surfaces, not
+    // just the in-memory state, so a synced copy converges to erased-content-free files.
+    const erases = op.kind === "erase" || (op.kind === "set-safety-boundary" && (op.erase?.length ?? 0) > 0);
+    if (this.store && erases) this.convergeErasure();
     const receipt = acceptedReceipt(op.operationId, pos, seq);
     this.receipts.set(op.operationId, receipt);
     return receipt;
+  }
+
+  /**
+   * Make an accepted Erasure destructive on disk: compact erased content out of the
+   * durable log and, if pages were materialized, re-project them so the Derived views
+   * and index carry no erased content. A synced copy then converges through file sync.
+   */
+  private convergeErasure(): void {
+    if (!this.store) return;
+    this.store.rewriteLog(compactErased(this.log));
+    if (this.materialized) this.materialize(this.lastMaterializeOpts);
   }
 
   /** Current derived state at head, maintained incrementally as operations are accepted. */
@@ -95,16 +127,60 @@ export class Campaign {
 
   /** Recall against a pinned snapshot. Later operations do not alter that snapshot. */
   recall(request: RecallRequest): RecallOutcome {
+    const gate = this.authorizeRecall(request);
+    if ("kind" in gate) return gate;
+    const snapshot = gate.pos === this.log.length ? this.liveState : replay(this.log.slice(0, gate.pos));
+    return assemble(plan(request, snapshot), snapshot, this.id);
+  }
+
+  /**
+   * Gate a recall request: a trustworthy snapshot must exist at the vantage, and the
+   * audience's *current* authority governs which lenses it may request even when the
+   * vantage pins content to an older snapshot. Shared by the atomic and two-phase paths
+   * so their bounds check and authority semantics cannot drift.
+   */
+  private authorizeRecall(request: RecallRequest): { pos: number } | { kind: "rejected" | "unavailable"; reason: string } {
     const pos = request.vantage.establishmentPos;
     if (pos < 0 || pos > this.log.length) {
       return { kind: "unavailable", reason: `no trustworthy snapshot at establishment position ${pos}` };
     }
-    // Authorization is a present-time gate: the audience's *current* authority governs
-    // which lenses it may request, even when the vantage pins content to an older snapshot.
     const denied = validateLensAuthority(request, this.liveState, this.owner);
     if (denied) return { kind: "rejected", reason: denied };
-    const snapshot = pos === this.log.length ? this.liveState : replay(this.log.slice(0, pos));
-    return assemble(plan(request, snapshot), snapshot, this.id);
+    return { pos };
+  }
+
+  /**
+   * Begin a two-phase recall: gate authority, plan, and validate the plan against an
+   * immutable snapshot pinned at the vantage, recording the safety basis (the head at
+   * validation). The returned prepared recall is disclosed with `disclose`.
+   */
+  prepareRecall(request: RecallRequest): PreparedRecall {
+    const gate = this.authorizeRecall(request);
+    if ("kind" in gate) return gate;
+    // Pin an immutable snapshot: a prepared plan must not drift if the log advances.
+    const snapshot = replay(this.log.slice(0, gate.pos));
+    const p = plan(request, snapshot);
+    const invalid = validatePlan(p, snapshot);
+    if (invalid) return { kind: "rejected", reason: invalid };
+    return { kind: "prepared", plan: p, snapshot, safetyBasis: this.log.length };
+  }
+
+  /**
+   * Disclose a prepared recall. A newly accepted Erasure or tightened Safety boundary
+   * since the prepared safety basis is a present-time override that invalidates the
+   * in-flight recall before any material is disclosed — never a partial disclosure.
+   */
+  disclose(prepared: Extract<PreparedRecall, { kind: "prepared" }>): RecallOutcome {
+    // Any set-safety-boundary counts: a boundary is a present-time constraint on every
+    // recall situation, so it can invalidate a prepared plan even when it carries no
+    // erasure (there is no boundary-loosening operation, so every set is a tightening).
+    const intervening = this.log
+      .slice(prepared.safetyBasis)
+      .some((e) => e.op.kind === "erase" || e.op.kind === "set-safety-boundary");
+    if (intervening) {
+      return { kind: "invalidated", reason: "a concurrent erasure or tightened safety boundary invalidated this recall before disclosure" };
+    }
+    return assemble(prepared.plan, prepared.snapshot, this.id);
   }
 
   /**
@@ -165,8 +241,10 @@ export class Campaign {
    * vault, so a synced copy is readable with no core. Requires a vault-backed
    * campaign; the pages are Derived views, rebuildable from the log.
    */
-  materialize(opts?: ProjectOptions): Materialization {
+  materialize(opts: ProjectOptions = {}): Materialization {
     if (!this.store) throw new Error("materialize requires a vault-backed campaign");
+    this.materialized = true;
+    this.lastMaterializeOpts = opts;
     return materialize(this.store.root, this.id, this.liveState, opts);
   }
 

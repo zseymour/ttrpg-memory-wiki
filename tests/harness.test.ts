@@ -28,6 +28,8 @@ const EXPECTED_KILLS: CatalogId[] = [
   "auto-accepted-intake",
   "rewound-return",
   "merge-on-alias",
+  "container-provenance",
+  "eager-cache-retention",
 ];
 
 describe("acceptance harness", () => {

@@ -9,7 +9,7 @@
  * copy is fully readable with no core running (the mobile-read story).
  */
 
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AnchorId } from "../core/ids.ts";
 import type { AnchorRole } from "../core/operations.ts";
@@ -50,6 +50,11 @@ export function materialize(root: string, campaign: string, state: CampaignState
   writeFileSync(join(root, INDEX_FILE), renderIndex(campaign, state));
   files.push(INDEX_FILE);
   return { files };
+}
+
+/** Whether derived surfaces already exist on disk, so a reopened campaign knows to re-project them on Erasure. */
+export function projectionExists(root: string): boolean {
+  return existsSync(join(root, INDEX_FILE)) || existsSync(join(root, PAGES_DIR));
 }
 
 /** A derived, rebuildable index: entities grouped by role, each linking to its page. */
