@@ -15,7 +15,7 @@ function scenario() {
   establishAnchor(c, "player", "voss", "Maera Voss");
   assertClaim(c, { actor: "player", stance: "establishment", subject: "voss", attribute: "status", value: "alive" });
   assertClaim(c, { actor: "player", stance: "establishment", subject: "voss", attribute: "note", value: "Maera runs the harbor office with brisk efficiency." });
-  const { text, manifest } = project(c.id, c.state(), anchor("voss"));
+  const { text, manifest } = project(c.id, c.state(), anchor("voss"), { reveal: true });
   return { c, text, manifest };
 }
 
@@ -48,7 +48,7 @@ describe("edit intake gating", () => {
     applyIntake(c, manifest, result, "player");
     // only after accepted intake does the record reflect it, as a correction
     expect(c.state().assertions.get(manifest.fields["status"]!.assertion)!.standing).toBe("corrected");
-    const { manifest: after } = project(c.id, c.state(), anchor("voss"));
+    const { manifest: after } = project(c.id, c.state(), anchor("voss"), { reveal: true });
     expect(after.fields["status"]!.value).toBe("missing");
   });
 
@@ -89,7 +89,7 @@ describe("stale-basis intake", () => {
     expect(field.outcome).toBe("rejected");
     expect(field.reason).toContain("conflict");
     // the stale value never entered the record
-    const { manifest: after } = project(c.id, c.state(), anchor("voss"));
+    const { manifest: after } = project(c.id, c.state(), anchor("voss"), { reveal: true });
     expect(JSON.stringify(after)).not.toContain("fled");
   });
 });

@@ -131,7 +131,7 @@ export function auxiliaryProbes(seed: number): Probe[] {
         const w = new World({ seed, scale: 3, campaign: `proj-${seed}` });
         const v = w.anchor("p-voss", "Voss");
         w.establishment(v, "status", "alive");
-        const { text, manifest } = project(w.campaign.id, w.campaign.state(), v);
+        const { text, manifest } = project(w.campaign.id, w.campaign.state(), v, { reveal: true });
         const edited = text.replace("status: alive", "status: dead");
         compileEdit(manifest, edited); // inspecting the edit must not touch the record
         return w.campaign.state().assertions.get(manifest.fields["status"]!.assertion)!.effectiveValue === "alive";
@@ -145,7 +145,7 @@ export function auxiliaryProbes(seed: number): Probe[] {
         const w = new World({ seed, scale: 3, campaign: `fmt-${seed}` });
         const v = w.anchor("f-voss", "Voss");
         w.establishment(v, "note", "She keeps a ledger nobody may touch.");
-        const { text, manifest } = project(w.campaign.id, w.campaign.state(), v);
+        const { text, manifest } = project(w.campaign.id, w.campaign.state(), v, { reveal: true });
         const reflowed = text.replace("She keeps a ledger nobody may touch.", "She keeps a ledger\nnobody    may touch.") + "\n\n";
         const result = compileEdit(manifest, reflowed);
         return result.diverged && result.proposals.length === 0;
@@ -159,7 +159,7 @@ export function auxiliaryProbes(seed: number): Probe[] {
         const w = new World({ seed, scale: 3, campaign: `amb-${seed}` });
         const v = w.anchor("a-voss", "Voss");
         w.establishment(v, "status", "alive");
-        const { text, manifest } = project(w.campaign.id, w.campaign.state(), v);
+        const { text, manifest } = project(w.campaign.id, w.campaign.state(), v, { reveal: true });
         const edited = text.replace("status: alive\n", "");
         const dispositions = applyIntake(w.campaign, manifest, compileEdit(manifest, edited), "player");
         const held = dispositions.some((d) => d.proposal.kind === "retract-field" && d.outcome === "held");

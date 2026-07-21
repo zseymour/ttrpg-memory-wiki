@@ -15,6 +15,8 @@ import { exportCampaign, type CampaignExport } from "./core/export.ts";
 import { FileVault, type VaultStore } from "./core/vault.ts";
 import { lensKey, type ChildRecallRequest, type RecallOutcome, type RecallReference, type RecallRequest } from "./recall/contract.ts";
 import { assemble, plan, validateLensAuthority } from "./recall/engine.ts";
+import { materialize, type Materialization } from "./projection/materialize.ts";
+import type { ProjectOptions } from "./projection/project.ts";
 
 export class Campaign {
   readonly id: CampaignId;
@@ -156,6 +158,16 @@ export class Campaign {
   exportCampaign(): CampaignExport {
     const receipts = this.log.map((entry) => this.receipts.get(entry.op.operationId)!);
     return exportCampaign(this.id, this.owner, this.log, receipts);
+  }
+
+  /**
+   * Render the campaign to on-disk Markdown pages and a derived index inside the
+   * vault, so a synced copy is readable with no core. Requires a vault-backed
+   * campaign; the pages are Derived views, rebuildable from the log.
+   */
+  materialize(opts?: ProjectOptions): Materialization {
+    if (!this.store) throw new Error("materialize requires a vault-backed campaign");
+    return materialize(this.store.root, this.id, this.liveState, opts);
   }
 
   /** Replay an export into a fresh, independent instance. */

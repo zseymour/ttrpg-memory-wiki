@@ -84,6 +84,13 @@ function parsePage(text: string): ParsedPage {
       inNotes = true;
       continue;
     }
+    // Standing sections (Preparation, Beliefs, …) follow Notes and are read-only:
+    // a new heading closes the editable Notes region rather than being slurped into it.
+    if (inNotes && /^##\s+/.test(line)) {
+      flush();
+      inNotes = false;
+      continue;
+    }
     if (!inNotes) continue;
     const tag = /^\s*<!--\s*claim:([\w-]+)\s*-->\s*$/.exec(line);
     if (tag) {
@@ -120,6 +127,12 @@ export function compileEdit(manifest: Manifest, editedText: string): IntakeResul
 
   // frontmatter field regions
   for (const [attribute, { assertion, value }] of Object.entries(manifest.fields)) {
+    if (manifest.shielded.fields.includes(attribute)) {
+      // A shielded field renders a marker, not its content; an edit to the marker
+      // has nothing to correct against. Reveal the page to edit it.
+      if (parsed.frontmatter[attribute] !== value) notes.push(`field ${attribute} is shielded; edit ignored (reveal to edit)`);
+      continue;
+    }
     if (!(attribute in parsed.frontmatter)) {
       proposals.push({ kind: "retract-field", confidence: "ambiguous", assertion, attribute, note: `field ${attribute} removed: retraction or accident?` });
     } else if (parsed.frontmatter[attribute] !== value) {
@@ -134,6 +147,10 @@ export function compileEdit(manifest: Manifest, editedText: string): IntakeResul
 
   // note block regions
   for (const [id, projected] of Object.entries(manifest.blocks)) {
+    if (manifest.shielded.blocks.includes(id)) {
+      if (parsed.notes[id] !== projected) notes.push(`note block ${id} is shielded; edit ignored (reveal to edit)`);
+      continue;
+    }
     if (!(id in parsed.notes)) {
       proposals.push({ kind: "retract-note", confidence: "ambiguous", assertion: id as AssertionId, note: `note block ${id} missing: retraction or accidental deletion?` });
     } else if (parsed.notes[id] !== projected) {

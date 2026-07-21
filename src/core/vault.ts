@@ -21,6 +21,8 @@ const MANIFEST_FILE = "campaign.json";
 export interface VaultStore {
   readonly id: CampaignId;
   readonly owner: string;
+  /** The vault folder: the authoritative log lives in its dot-folder; projections live in the root. */
+  readonly root: string;
   loadLog(): Accepted[];
   append(entry: Accepted): void;
 }
@@ -33,11 +35,13 @@ interface VaultManifest {
 export class FileVault implements VaultStore {
   readonly id: CampaignId;
   readonly owner: string;
+  readonly root: string;
   private readonly logPath: string;
 
-  private constructor(id: CampaignId, owner: string, logPath: string) {
+  private constructor(id: CampaignId, owner: string, root: string, logPath: string) {
     this.id = id;
     this.owner = owner;
+    this.root = root;
     this.logPath = logPath;
   }
 
@@ -49,7 +53,7 @@ export class FileVault implements VaultStore {
 
     if (existsSync(manifestPath)) {
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as VaultManifest;
-      return new FileVault(campaignId(manifest.campaign), manifest.owner, logPath);
+      return new FileVault(campaignId(manifest.campaign), manifest.owner, vaultPath, logPath);
     }
 
     mkdirSync(dir, { recursive: true });
@@ -57,7 +61,7 @@ export class FileVault implements VaultStore {
     const manifest: VaultManifest = { campaign: id, owner };
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     writeFileSync(logPath, "");
-    return new FileVault(id, owner, logPath);
+    return new FileVault(id, owner, vaultPath, logPath);
   }
 
   loadLog(): Accepted[] {
