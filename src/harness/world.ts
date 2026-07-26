@@ -10,10 +10,11 @@
  */
 
 import { Campaign } from "../campaign.ts";
-import { anchorId, campaignId, operationId, type AnchorId, type ConflictId, type GrantId, type OperationId } from "../core/ids.ts";
-import { IDENTITY_EQUIVALENCE, type ConflictEffect, type EstablishmentMode, type Proposition, type Provenance, type Stance, type Uncertainty } from "../core/operations.ts";
+import { anchorId, campaignId, operationId, rulingId, type AnchorId, type ConflictId, type GrantId, type OperationId, type RulingId } from "../core/ids.ts";
+import { IDENTITY_EQUIVALENCE, type Citation, type ConflictEffect, type EstablishmentMode, type Proposition, type Provenance, type Stance, type Uncertainty } from "../core/operations.ts";
 import type { Receipt } from "../core/receipt.ts";
 import { assertionIdAt, type AssertionId } from "../core/ids.ts";
+import type { SourceStore } from "../sources/store.ts";
 import { Prng } from "./prng.ts";
 
 const NOISE_STANCES: readonly Stance[] = ["establishment", "player-awareness", "preparation", "belief", "suspicion", "entity-awareness"];
@@ -27,6 +28,8 @@ export interface WorldOptions {
   scale: number;
   owner?: string;
   campaign?: string;
+  /** An optional versioned Source store, enabling Corpus pins and Rule context. */
+  sourceStore?: SourceStore;
 }
 
 export class World {
@@ -40,7 +43,7 @@ export class World {
 
   constructor(opts: WorldOptions) {
     this.owner = opts.owner ?? "player";
-    this.campaign = new Campaign(campaignId(opts.campaign ?? `harness-${opts.seed}-${opts.scale}`), this.owner);
+    this.campaign = new Campaign(campaignId(opts.campaign ?? `harness-${opts.seed}-${opts.scale}`), this.owner, undefined, opts.sourceStore);
     this.prng = new Prng(opts.seed);
     this.scale = opts.scale;
   }
@@ -157,6 +160,35 @@ export class World {
 
   resolve(conflict: ConflictId, effect: ConflictEffect): Receipt {
     return this.accept(this.campaign.submit({ kind: "resolve-conflict", operationId: this.oid(), actor: this.owner, conflict, effect }));
+  }
+
+  /** Establish a campaign ruling as rule context: normative, distinct from fictional truth. */
+  ruling(id: string, o: { scope: string; text: string; cites?: Citation[]; precedenceOver?: RulingId[]; anchors?: AnchorId[] }): Receipt {
+    return this.accept(
+      this.campaign.submit({
+        kind: "establish-ruling",
+        operationId: this.oid(),
+        actor: this.owner,
+        ruling: rulingId(id),
+        scope: o.scope,
+        text: o.text,
+        cites: o.cites,
+        precedenceOver: o.precedenceOver,
+        anchors: o.anchors,
+      }),
+    );
+  }
+
+  /** Pin a Source-store version as what composes live for a source. */
+  pinCorpus(source: string, version: string, effectiveFrom: number | null = null): Receipt {
+    return this.accept(this.campaign.submit({ kind: "pin-corpus", operationId: this.oid(), actor: this.owner, source, version, effectiveFrom }));
+  }
+
+  /** Reconcile a frozen citation against the currently pinned version. */
+  reconcileCitation(ruling: string, citation: number, disposition: "reconfirm" | "revise" | "retire", newCitation?: Citation): Receipt {
+    return this.accept(
+      this.campaign.submit({ kind: "reconcile-citation", operationId: this.oid(), actor: this.owner, ruling: rulingId(ruling), citation, disposition, newCitation }),
+    );
   }
 
   grant(delegate: GrantId, grantee: string, acts: ("establish" | "prepare" | "portray" | "maintain" | "resolve")[]): void {

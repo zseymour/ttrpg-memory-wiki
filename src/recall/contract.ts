@@ -200,15 +200,45 @@ export interface RecallArtifact {
   provenance: string;
 }
 
+/**
+ * A version-frozen citation composed live at recall. `citedVersion` stays frozen
+ * at authorship; `content`/`locator` resolve through the pinned version when a
+ * Source store is present and the source is pinned, else degrade honestly with a
+ * `provenanceGap` and the frozen locator. `excerpt` is always the frozen evidence.
+ */
+export interface RecallCitation {
+  source: string;
+  ruleId: string;
+  citedVersion: string;
+  pinnedVersion: string | null;
+  content: string | null;
+  locator: string;
+  excerpt: string;
+  reconciliation: "current" | "unreviewed" | "reconfirmed" | "revised" | "retired";
+  provenanceGap?: string;
+}
+
 /** A normative campaign ruling surfaced as rule context, distinct from fictional truth. */
 export interface RecallRuling {
   id: RulingId;
   scope: string;
   text: string;
-  ruleRef: string | null;
+  cites: RecallCitation[];
+  precedenceOver: RulingId[];
   standing: Standing;
   authority: string;
   provenance: string;
+}
+
+/**
+ * A structural ruling conflict: two or more applicable rulings cite the same Rule
+ * identity over intersecting anchor scope with no declared precedence resolving them.
+ * No side is dropped or selected — the conflict lists every member.
+ */
+export interface RulingConflict {
+  ruleIdentity: { source: string; ruleId: string };
+  anchors: AnchorId[];
+  members: RulingId[];
 }
 
 /** An explicit Unrecorded answer: memory holds no qualifying assertion for this slot. */
@@ -232,6 +262,8 @@ export interface RecallResult {
   artifacts: RecallArtifact[];
   /** Applicable campaign rulings (rule context) for the focus. */
   rulings: RecallRuling[];
+  /** Structural conflicts among applicable rulings citing the same Rule identity. */
+  rulingConflicts: RulingConflict[];
   /** Explicit Unrecorded answers for requested expectations with no qualifying assertion. */
   unrecorded: RecallUnrecorded[];
   /** Fully qualified enrichment, admitted only after closure fits; never affects completeness. */

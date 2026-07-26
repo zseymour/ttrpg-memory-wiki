@@ -16,7 +16,9 @@
 
 import type { AnchorId, AssertionId, CampaignId } from "../core/ids.ts";
 import { IDENTITY_EQUIVALENCE, isEquivalence, stanceAct, type Provenance } from "../core/operations.ts";
-import { heldActs, type AssertionRecord, type CampaignState } from "../core/state.ts";
+import { heldActs, type AssertionRecord, type CampaignState, type RulingRecord } from "../core/state.ts";
+import type { SourceStore } from "../sources/store.ts";
+import { citationReconciliation } from "./reconcile.ts";
 import {
   lensAdmits,
   lensKey,
@@ -32,6 +34,7 @@ import {
   type RecallRequest,
   type RecallResult,
   type RecallRuling,
+  type RulingConflict,
   type RecallUnrecorded,
   type TemporalMatch,
   type Vantage,
@@ -255,9 +258,11 @@ function relatedByArtifact(state: CampaignState, focal: AnchorId, focalSet: Set<
 /**
  * Assemble a validated plan against a snapshot state. `state` must already be the
  * derived state at the plan's vantage snapshot; Campaign binds that snapshot.
- * `campaign` binds the references so a child request can be checked against it.
+ * `campaign` binds the references so a child request can be checked against it. The
+ * optional Source store composes pinned citation content and derives reconciliation;
+ * absent, rule context still composes from frozen evidence and conflicts still derive.
  */
-export function assemble(plan: RecallPlan, state: CampaignState, campaign: CampaignId): RecallOutcome {
+export function assemble(plan: RecallPlan, state: CampaignState, campaign: CampaignId, sourceStore?: SourceStore): RecallOutcome {
   const req = plan.request;
   const invalid = validatePlan(plan, state);
   if (invalid) return { kind: "rejected", reason: `invalid plan: ${invalid}` };
@@ -279,6 +284,7 @@ export function assemble(plan: RecallPlan, state: CampaignState, campaign: Campa
     equivalences: [],
     artifacts: [],
     rulings: [],
+    rulingConflicts: [],
     unrecorded: [],
     enrichment: [],
     references: [],
@@ -499,10 +505,13 @@ export function assemble(plan: RecallPlan, state: CampaignState, campaign: Campa
     spent++;
   }
 
-  // Tier 5 — rule context: applicable campaign rulings for the focus, never fictional truth.
-  for (const rul of state.rulings.values()) {
-    if (rul.standing !== "active") continue;
-    if (!rul.anchors.some((a) => focalSet.has(a))) continue;
+  // Tier 5 — rule context: applicable campaign rulings for the focus, never fictional
+  // truth. Composition is citation-driven — each ruling carries its own frozen citations
+  // composed live against the current pins; there is no free corpus retrieval for the focus.
+  const applicable = [...state.rulings.values()].filter(
+    (rul) => rul.standing === "active" && rul.anchors.some((a) => focalSet.has(a)),
+  );
+  for (const rul of applicable) {
     if (spent >= req.budget.total) {
       gap({
         requirement: "rule-context",
@@ -519,13 +528,18 @@ export function assemble(plan: RecallPlan, state: CampaignState, campaign: Campa
       id: rul.id,
       scope: rul.scope,
       text: rul.text,
-      ruleRef: rul.ruleRef,
+      cites: rul.cites.map((_, i) => citationReconciliation(state, sourceStore, rul, i)),
+      precedenceOver: [...rul.precedenceOver],
       standing: rul.standing,
       authority: rul.actor,
       provenance: formatProvenance(rul.provenance),
     } satisfies RecallRuling);
     spent++;
   }
+
+  // Ruling conflict: structural overlap on cited Rule identity + anchors, never text
+  // similarity, confidence, or last-write-wins. No side is dropped or selected.
+  detectRulingConflicts(applicable, result.rulingConflicts);
 
   // Enrichment tier — admitted only when recall-critical closure is complete. It is
   // fully qualified, never displaces critical material, and never affects completeness.
@@ -574,4 +588,53 @@ export function assemble(plan: RecallPlan, state: CampaignState, campaign: Campa
   return result.gaps.length > 0 || !result.complete
     ? { kind: "result", result: { ...result, complete: false } }
     : { kind: "result", result };
+}
+
+/**
+ * Structural ruling-conflict detection. Two or more applicable rulings conflict when
+ * they cite the same Rule identity (source + ruleId) over intersecting anchor scope and
+ * no declared `precedenceOver` resolves them — it is not the case that one member
+ * declares precedence over every other. Structural on declared citations, never text
+ * similarity, model confidence, or normative last-write-wins; no side is dropped or
+ * selected. A ruling with no cites is never in a group. Deterministic in state order.
+ */
+function detectRulingConflicts(applicable: RulingRecord[], out: RulingConflict[]): void {
+  const groups = new Map<string, { source: string; ruleId: string; rulings: RulingRecord[] }>();
+  for (const rul of applicable) {
+    const counted = new Set<string>();
+    for (const cite of rul.cites) {
+      const key = `${cite.source}\u0000${cite.ruleId}`;
+      if (counted.has(key)) continue; // a ruling joins each identity group at most once
+      counted.add(key);
+      let group = groups.get(key);
+      if (!group) {
+        group = { source: cite.source, ruleId: cite.ruleId, rulings: [] };
+        groups.set(key, group);
+      }
+      group.rulings.push(rul);
+    }
+  }
+  for (const group of groups.values()) {
+    if (group.rulings.length < 2) continue;
+    // Overlapping anchor scope: anchors declared by at least two members of the group.
+    const anchorCount = new Map<AnchorId, number>();
+    for (const rul of group.rulings) {
+      for (const a of new Set(rul.anchors)) anchorCount.set(a, (anchorCount.get(a) ?? 0) + 1);
+    }
+    const overlapping = [...anchorCount.entries()].filter(([, n]) => n >= 2).map(([a]) => a);
+    if (overlapping.length === 0) continue;
+    const overlapSet = new Set(overlapping);
+    const members = group.rulings.filter((rul) => rul.anchors.some((a) => overlapSet.has(a)));
+    if (members.length < 2) continue;
+    const resolved = members.some((m) => {
+      const declared = new Set(m.precedenceOver);
+      return members.every((o) => o.id === m.id || declared.has(o.id));
+    });
+    if (resolved) continue;
+    out.push({
+      ruleIdentity: { source: group.source, ruleId: group.ruleId },
+      anchors: [...overlapping].sort(),
+      members: members.map((m) => m.id).sort(),
+    });
+  }
 }

@@ -48,7 +48,7 @@ export const FAILURE_CATALOG: readonly CatalogEntry[] = [
   { id: "merge-on-alias", description: "a shared name or asserted equivalence merges two distinct entities" },
   { id: "summary-drift", description: "an edited recap silently becomes authoritative", pendingSubsystem: "recap / derived-view adoption" },
   { id: "naive-gap-reporting", description: "a gap reveals the excluded or erased material it reports" },
-  { id: "live-rules-lookup", description: "rules resolved by unreproducible live lookup", pendingSubsystem: "source store" },
+  { id: "live-rules-lookup", description: "rules resolved by unreproducible live lookup" },
   { id: "in-place-schema-migration", description: "a content-kind change rewrites historical semantics", pendingSubsystem: "content-kind adapters" },
   { id: "windowed-reconciliation", description: "conflict detection only scans a recent window" },
   { id: "over-detection", description: "unrelated or state-transition changes are flagged as conflicts" },

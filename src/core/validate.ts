@@ -150,6 +150,46 @@ function checkInvariants(st: CampaignState, op: Operation): Rejection | null {
       for (const a of op.anchors ?? []) {
         if (!st.anchors.has(a)) return { code: "identity", message: `ruling scope anchor ${a} is not established` };
       }
+      for (const c of op.cites ?? []) {
+        // Structural only: never consult a Source store during validation.
+        if (c.source.trim() === "" || c.version.trim() === "" || c.ruleId.trim() === "") {
+          return { code: "normative", message: "a citation requires non-empty source, version, and ruleId" };
+        }
+      }
+      for (const target of op.precedenceOver ?? []) {
+        if (!st.rulings.has(target)) {
+          return { code: "identity", message: `precedenceOver target ${target} is not an established ruling` };
+        }
+      }
+      return null;
+    }
+    case "pin-corpus": {
+      if (op.source.trim() === "" || op.version.trim() === "") {
+        return { code: "normative", message: "a corpus pin requires a non-empty source and version" };
+      }
+      return null;
+    }
+    case "reconcile-citation": {
+      const rul = st.rulings.get(op.ruling);
+      if (!rul) return { code: "identity", message: `ruling ${op.ruling} does not exist` };
+      if (op.citation < 0 || op.citation >= rul.cites.length) {
+        return { code: "identity", message: `citation index ${op.citation} is out of range for ruling ${op.ruling}` };
+      }
+      if (op.disposition !== "reconfirm" && op.disposition !== "revise" && op.disposition !== "retire") {
+        return { code: "normative", message: `invalid reconciliation disposition '${op.disposition}'` };
+      }
+      if (op.disposition === "revise") {
+        const nc = op.newCitation;
+        if (!nc || nc.source.trim() === "" || nc.version.trim() === "" || nc.ruleId.trim() === "") {
+          return { code: "normative", message: "revise requires a well-formed newCitation" };
+        }
+      }
+      if (op.disposition === "reconfirm") {
+        const source = rul.cites[op.citation]!.source;
+        if (!st.pins.has(source)) {
+          return { code: "normative", message: "cannot reconfirm a citation whose source is not pinned" };
+        }
+      }
       return null;
     }
     case "resolve-conflict": {

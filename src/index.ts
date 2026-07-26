@@ -19,6 +19,7 @@ export {
   type CampaignState,
   type ContinuityConflict,
   type GrantRecord,
+  type PinRecord,
   type RulingRecord,
   type Standing,
 } from "./core/state.ts";
@@ -27,6 +28,8 @@ export { compactErased, exportCampaign, reviveExport, type CampaignExport } from
 export { FileVault, type VaultStore } from "./core/vault.ts";
 export * from "./recall/contract.ts";
 export { assemble, plan, validateLensAuthority, validatePlan, type RecallPath, type RecallPlan } from "./recall/engine.ts";
+export { previewRepin, type RepinImpact } from "./recall/reconcile.ts";
+export type { RuleIdentity, ResolvedRule, SourceStore, VersionRevisions } from "./sources/store.ts";
 export { normalize, pageSha, project, SHIELD, type Manifest, type Projection, type ProjectOptions } from "./projection/project.ts";
 export { applyIntake, compileEdit, type Confidence, type Disposition, type IntakeResult, type Proposal } from "./projection/intake.ts";
 export { materialize, type Materialization } from "./projection/materialize.ts";

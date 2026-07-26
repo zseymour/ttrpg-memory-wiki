@@ -144,6 +144,19 @@ export interface ArtifactLink {
   target: AnchorId | AssertionId | ArtifactId;
 }
 
+/**
+ * A version-frozen reference to citable Source-store material backing a ruling.
+ * `version` is frozen at authorship — freeze what was ingested; Corpus pins govern
+ * what composes live. `evidence` is the opaque claim evidence retained at authorship,
+ * never a resolution key.
+ */
+export interface Citation {
+  source: string;
+  version: string;
+  ruleId: string;
+  evidence: { locator: string; excerpt: string };
+}
+
 export type Operation =
   | (OpBase & { kind: "establish-anchor"; anchor: AnchorId; label: string; role?: AnchorRole })
   | (OpBase & {
@@ -177,7 +190,11 @@ export type Operation =
   | (OpBase & { kind: "establish-artifact"; artifact: ArtifactId; artifactKind: string; label: string; links?: ArtifactLink[]; provenance?: Provenance })
   | (OpBase & { kind: "link-artifact"; artifact: ArtifactId; link: ArtifactLink })
   // Normative item: a campaign ruling governing adjudication for a defined scope.
-  | (OpBase & { kind: "establish-ruling"; ruling: RulingId; scope: string; text: string; ruleRef?: string; anchors?: AnchorId[]; provenance?: Provenance });
+  | (OpBase & { kind: "establish-ruling"; ruling: RulingId; scope: string; text: string; cites?: Citation[]; precedenceOver?: RulingId[]; anchors?: AnchorId[]; provenance?: Provenance })
+  // Corpus pin: adopt a Source-store version as what composes live for a source.
+  | (OpBase & { kind: "pin-corpus"; source: string; version: string; effectiveFrom: number | null; provenance?: Provenance })
+  // Reconcile a frozen citation against the currently pinned version.
+  | (OpBase & { kind: "reconcile-citation"; ruling: RulingId; citation: number; disposition: "reconfirm" | "revise" | "retire"; newCitation?: Citation; provenance?: Provenance });
 
 /** The semantic acts authority can be delegated for. */
 export type Act =
@@ -187,7 +204,8 @@ export type Act =
   | "organize" // create and link structured artifacts
   | "rule" // author normative campaign rulings
   | "maintain" // correct/retract/supersede/rewind
-  | "resolve"; // resolve continuity conflicts
+  | "resolve" // resolve continuity conflicts
+  | "pin"; // adopt corpus pins and reconcile citations
 
 /** The act governing a stance: authoring it when writing, consulting its lens when reading. */
 export function stanceAct(stance: Stance): Act {
@@ -216,6 +234,9 @@ export function requiredAct(op: Operation): Act | "owner-only" | null {
       return "organize";
     case "establish-ruling":
       return "rule";
+    case "pin-corpus":
+    case "reconcile-citation":
+      return "pin";
     case "correct":
     case "retract":
     case "supersede":

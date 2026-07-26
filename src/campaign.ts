@@ -15,6 +15,8 @@ import { compactErased, exportCampaign, type CampaignExport } from "./core/expor
 import { FileVault, type VaultStore } from "./core/vault.ts";
 import { lensKey, type ChildRecallRequest, type RecallOutcome, type RecallReference, type RecallRequest } from "./recall/contract.ts";
 import { assemble, plan, validateLensAuthority, validatePlan, type RecallPlan } from "./recall/engine.ts";
+import { previewRepin, type RepinImpact } from "./recall/reconcile.ts";
+import type { SourceStore } from "./sources/store.ts";
 import { materialize, projectionExists, type Materialization } from "./projection/materialize.ts";
 import type { ProjectOptions } from "./projection/project.ts";
 
@@ -36,15 +38,17 @@ export class Campaign {
   private seq = 0;
   private readonly liveState: CampaignState = emptyState();
   private readonly store: VaultStore | undefined;
+  private readonly sourceStore: SourceStore | undefined;
   // Track whether derived pages exist on disk, so an Erasure re-projects (purging
   // stale content) rather than creating pages the campaign never materialized.
   private materialized = false;
   private lastMaterializeOpts: ProjectOptions = {};
 
-  constructor(id: CampaignId, owner: string, store?: VaultStore) {
+  constructor(id: CampaignId, owner: string, store?: VaultStore, sourceStore?: SourceStore) {
     this.id = id;
     this.owner = owner;
     this.store = store;
+    this.sourceStore = sourceStore;
     // A reopened vault persists only the log; reconstruct each accepted receipt so
     // position lookup and export behave identically to the originating instance.
     for (const entry of store?.loadLog() ?? []) {
@@ -130,7 +134,7 @@ export class Campaign {
     const gate = this.authorizeRecall(request);
     if ("kind" in gate) return gate;
     const snapshot = gate.pos === this.log.length ? this.liveState : replay(this.log.slice(0, gate.pos));
-    return assemble(plan(request, snapshot), snapshot, this.id);
+    return assemble(plan(request, snapshot), snapshot, this.id, this.sourceStore);
   }
 
   /**
@@ -180,7 +184,17 @@ export class Campaign {
     if (intervening) {
       return { kind: "invalidated", reason: "a concurrent erasure or tightened safety boundary invalidated this recall before disclosure" };
     }
-    return assemble(prepared.plan, prepared.snapshot, this.id);
+    return assemble(prepared.plan, prepared.snapshot, this.id, this.sourceStore);
+  }
+
+  /**
+   * Preview what re-pinning `source` to `candidateVersion` would affect: the frozen
+   * citations the store's declared revisions touch, prompting review. Read-only — not
+   * an operation; the review is submitted as explicit pin-corpus / reconcile-citation.
+   * Returns [] when no Source store is present, since the delta is undefinable without it.
+   */
+  previewRepin(source: string, candidateVersion: string): RepinImpact[] {
+    return previewRepin(this.liveState, this.sourceStore, source, candidateVersion);
   }
 
   /**

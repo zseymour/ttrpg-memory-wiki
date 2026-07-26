@@ -189,12 +189,19 @@ describe("normative item (campaign ruling, distinct from fictional truth)", () =
   test("a ruling is surfaced as rule context, never as established fiction", () => {
     const c = newCampaign("player");
     establishAnchor(c, "player", "voss", "Voss");
-    establishRuling(c, { actor: "player", id: "ruling-1", scope: "grappling Voss", text: "Voss always resists the first grapple with advantage.", ruleRef: "SRD:grapple", anchors: ["voss"] });
+    establishRuling(c, { actor: "player", id: "ruling-1", scope: "grappling Voss", text: "Voss always resists the first grapple with advantage.", cites: [{ source: "SRD", version: "5.1", ruleId: "grapple", evidence: { locator: "p.42", excerpt: "you can attempt to grapple" } }], anchors: ["voss"] });
 
     const r = recall(c, ["voss"], [EST]);
     expect(r.rulings).toHaveLength(1);
     expect(r.rulings[0]!.scope).toBe("grappling Voss");
-    expect(r.rulings[0]!.ruleRef).toBe("SRD:grapple");
+    // The citation is version-frozen at authorship and carries its frozen excerpt.
+    expect(r.rulings[0]!.cites).toHaveLength(1);
+    expect(r.rulings[0]!.cites[0]!.citedVersion).toBe("5.1");
+    expect(r.rulings[0]!.cites[0]!.ruleId).toBe("grapple");
+    expect(r.rulings[0]!.cites[0]!.excerpt).toBe("you can attempt to grapple");
+    // No Source store bound here, so live content degrades honestly with a provenance gap.
+    expect(r.rulings[0]!.cites[0]!.content).toBeNull();
+    expect(r.rulings[0]!.cites[0]!.provenanceGap).toBeDefined();
     // The ruling text is not established fictional truth.
     expect(r.lenses["establishment"]).toHaveLength(0);
   });

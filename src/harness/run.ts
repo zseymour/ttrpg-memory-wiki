@@ -17,6 +17,8 @@ import { FAILURE_CATALOG, type CatalogId } from "./catalog.ts";
 import { absentEverywhere, present, recallResult, runProbes, type Probe, type ProbeResult } from "./oracle.ts";
 import { FAMILIES } from "./scenarios.ts";
 import { World } from "./world.ts";
+import { syntheticStore } from "./corpus.ts";
+import { rulingId } from "../core/ids.ts";
 
 const EST: Lens = { kind: "establishment" };
 
@@ -261,6 +263,200 @@ export function auxiliaryProbes(seed: number): Probe[] {
         w.safety("sb-inflight", "captivity");
         const afterTighten = w.campaign.disclose(prepared2);
         return afterErase.kind === "invalidated" && afterTighten.kind === "invalidated";
+      },
+    },
+    {
+      family: "evolvability",
+      name: "[aux] corpus resolution is reproducible; re-processing mints a distinct version",
+      kills: [],
+      check: () => {
+        // AC1: an immutable minted version resolves to identical content across calls,
+        // and a re-processed rule (v2 shove errata) is a distinct version, not an edit.
+        const store = syntheticStore();
+        const first = store.resolve("synthetic-corpus", "v1", "grapple");
+        const second = store.resolve("synthetic-corpus", "v1", "grapple");
+        const v1shove = store.resolve("synthetic-corpus", "v1", "shove");
+        const v2shove = store.resolve("synthetic-corpus", "v2", "shove");
+        return (
+          first !== null &&
+          JSON.stringify(first) === JSON.stringify(second) &&
+          v1shove !== null &&
+          v2shove !== null &&
+          v1shove.content !== v2shove.content
+        );
+      },
+    },
+    {
+      family: "evolvability",
+      name: "[aux] rule context composes pinned corpus content without copying it into a lens",
+      kills: ["live-rules-lookup"],
+      check: () => {
+        // AC2: an applicable ruling's citation resolves live against the pinned version,
+        // reproducibly, and the corpus text is never copied into the establishment lens.
+        const w = new World({ seed, scale: 5, campaign: `corpus-compose-${seed}`, sourceStore: syntheticStore() });
+        const goblin = w.anchor("cc-goblin", "Goblin");
+        w.pinCorpus("synthetic-corpus", "v1");
+        w.ruling("r-grapple", {
+          scope: "combat",
+          text: "Grapple is a contest of Athletics.",
+          anchors: [goblin],
+          cites: [{ source: "synthetic-corpus", version: "v1", ruleId: "grapple", evidence: { locator: "p.10", excerpt: "grappling in brief" } }],
+        });
+        const r1 = recallResult(w.campaign, [goblin], [EST]);
+        const r2 = recallResult(w.campaign, [goblin], [EST]);
+        if (r1 === null || r2 === null) return false;
+        const rul1 = r1.rulings.find((x) => x.id === rulingId("r-grapple"));
+        const rul2 = r2.rulings.find((x) => x.id === rulingId("r-grapple"));
+        if (!rul1 || !rul2) return false;
+        const c1 = rul1.cites[0]!;
+        const estLens = JSON.stringify(r1.lenses["establishment"] ?? []);
+        return (
+          c1.content === "v1 grapple text" &&
+          c1.citedVersion === "v1" &&
+          rul2.cites[0]!.content === c1.content && // reproducible across recalls
+          !estLens.includes("v1 grapple text") // corpus text not copied into the lens
+        );
+      },
+    },
+    {
+      family: "evolvability",
+      name: "[aux] a ruling disagreeing with its cited rule surfaces both, neither rewritten",
+      kills: [],
+      check: () => {
+        // AC3: the ruling text may contradict the cited corpus content; recall surfaces
+        // both verbatim, resolving neither toward the other.
+        const w = new World({ seed, scale: 5, campaign: `corpus-disagree-${seed}`, sourceStore: syntheticStore() });
+        const goblin = w.anchor("cd-goblin", "Goblin");
+        w.pinCorpus("synthetic-corpus", "v1");
+        w.ruling("r-house", {
+          scope: "combat",
+          text: "House rule: grapple is a Strength save, overriding the book.",
+          anchors: [goblin],
+          cites: [{ source: "synthetic-corpus", version: "v1", ruleId: "grapple", evidence: { locator: "p.10", excerpt: "grappling in brief" } }],
+        });
+        const r = recallResult(w.campaign, [goblin], [EST]);
+        if (r === null) return false;
+        const rul = r.rulings.find((x) => x.id === rulingId("r-house"));
+        if (!rul) return false;
+        return (
+          rul.text === "House rule: grapple is a Strength save, overriding the book." &&
+          rul.cites[0]!.content === "v1 grapple text"
+        );
+      },
+    },
+    {
+      family: "evolvability",
+      name: "[aux] re-pin flags revised and removed citations as unreviewed; reconfirm discharges; unchanged stays current",
+      kills: ["windowed-reconciliation"],
+      check: () => {
+        // AC4: adoption of a new version is never blocked; citations touched by the delta
+        // become unreviewed and rulings still surface; a reconfirm discharges to
+        // reconfirmed; a carried-forward citation is never over-flagged.
+        const w = new World({ seed, scale: 5, campaign: `corpus-reconcile-${seed}`, sourceStore: syntheticStore() });
+        const goblin = w.anchor("cr-goblin", "Goblin");
+        w.pinCorpus("synthetic-corpus", "v1");
+        w.ruling("r-shove", {
+          scope: "combat",
+          text: "Shove per the book.",
+          anchors: [goblin],
+          cites: [{ source: "synthetic-corpus", version: "v1", ruleId: "shove", evidence: { locator: "p.11", excerpt: "shoving in brief" } }],
+        });
+        w.ruling("r-trip", {
+          scope: "combat",
+          text: "Trip per the book.",
+          anchors: [goblin],
+          cites: [{ source: "synthetic-corpus", version: "v1", ruleId: "trip", evidence: { locator: "p.12", excerpt: "tripping in brief" } }],
+        });
+        w.ruling("r-grapple", {
+          scope: "combat",
+          text: "Grapple per the book.",
+          anchors: [goblin],
+          cites: [{ source: "synthetic-corpus", version: "v1", ruleId: "grapple", evidence: { locator: "p.10", excerpt: "grappling in brief" } }],
+        });
+        w.pinCorpus("synthetic-corpus", "v2"); // adoption is accepted, never blocked
+        const before = recallResult(w.campaign, [goblin], [EST]);
+        if (before === null) return false;
+        const shove = before.rulings.find((x) => x.id === rulingId("r-shove"));
+        const trip = before.rulings.find((x) => x.id === rulingId("r-trip"));
+        const grapple = before.rulings.find((x) => x.id === rulingId("r-grapple"));
+        if (!shove || !trip || !grapple) return false;
+        const flagged =
+          shove.cites[0]!.reconciliation === "unreviewed" && // revised under the same id
+          trip.cites[0]!.reconciliation === "unreviewed" && // removed in v2
+          grapple.cites[0]!.reconciliation === "current"; // carried forward unchanged
+        w.reconcileCitation("r-shove", 0, "reconfirm");
+        const after = recallResult(w.campaign, [goblin], [EST]);
+        if (after === null) return false;
+        const shoveAfter = after.rulings.find((x) => x.id === rulingId("r-shove"));
+        return flagged && shoveAfter?.cites[0]!.reconciliation === "reconfirmed";
+      },
+    },
+    {
+      family: "contradiction-recovery",
+      name: "[aux] two rulings citing the same rule with overlapping scope conflict until precedence is declared",
+      kills: [],
+      check: () => {
+        // AC5: structural ruling conflict lists every member and drops none; declaring
+        // precedence resolves it.
+        const conflicting = new World({ seed, scale: 5, campaign: `corpus-conflict-${seed}`, sourceStore: syntheticStore() });
+        const goblin = conflicting.anchor("cx-goblin", "Goblin");
+        conflicting.pinCorpus("synthetic-corpus", "v1");
+        const cite = [{ source: "synthetic-corpus", version: "v1", ruleId: "grapple", evidence: { locator: "p.10", excerpt: "grappling in brief" } }];
+        conflicting.ruling("r-a", { scope: "combat", text: "Grapple is Athletics.", anchors: [goblin], cites: cite });
+        conflicting.ruling("r-b", { scope: "combat", text: "Grapple is a Strength save.", anchors: [goblin], cites: cite });
+        const rc = recallResult(conflicting.campaign, [goblin], [EST]);
+        if (rc === null) return false;
+        const conflict = rc.rulingConflicts.find((k) => k.ruleIdentity.ruleId === "grapple");
+        const bothConflicting =
+          conflict !== undefined &&
+          conflict.members.includes(rulingId("r-a")) &&
+          conflict.members.includes(rulingId("r-b")) &&
+          rc.rulings.some((x) => x.id === rulingId("r-a")) &&
+          rc.rulings.some((x) => x.id === rulingId("r-b")); // nothing dropped
+        const resolved = new World({ seed, scale: 5, campaign: `corpus-precedence-${seed}`, sourceStore: syntheticStore() });
+        const goblin2 = resolved.anchor("cp-goblin", "Goblin");
+        resolved.pinCorpus("synthetic-corpus", "v1");
+        resolved.ruling("r-a", { scope: "combat", text: "Grapple is Athletics.", anchors: [goblin2], cites: cite });
+        resolved.ruling("r-b", { scope: "combat", text: "Grapple is a Strength save.", anchors: [goblin2], cites: cite, precedenceOver: [rulingId("r-a")] });
+        const rr = recallResult(resolved.campaign, [goblin2], [EST]);
+        return bothConflicting && rr !== null && rr.rulingConflicts.length === 0;
+      },
+    },
+    {
+      family: "evolvability",
+      name: "[aux] export/replay reproduces rule context store-absent, degrading honestly to the frozen excerpt",
+      kills: ["live-rules-lookup"],
+      check: () => {
+        // AC6: a citation frozen at authorship replays without the Source store; content
+        // degrades to null with a provenance gap, the frozen excerpt survives, and the
+        // pin/citation/ruling standing replays identically.
+        const w = new World({ seed, scale: 5, campaign: `corpus-export-${seed}`, sourceStore: syntheticStore() });
+        const goblin = w.anchor("ce-goblin", "Goblin");
+        w.pinCorpus("synthetic-corpus", "v1");
+        w.ruling("r-grapple", {
+          scope: "combat",
+          text: "Grapple is a contest of Athletics.",
+          anchors: [goblin],
+          cites: [{ source: "synthetic-corpus", version: "v1", ruleId: "grapple", evidence: { locator: "p.10", excerpt: "grappling in brief" } }],
+        });
+        const exported = JSON.stringify(w.campaign.exportCampaign());
+        const revived = Campaign.fromExport(reviveExport(exported)); // store-ABSENT revival
+        const r = recallResult(revived, [goblin], [EST]);
+        if (r === null) return false;
+        const rul = r.rulings.find((x) => x.id === rulingId("r-grapple"));
+        if (!rul) return false;
+        const c = rul.cites[0]!;
+        const replayedRuling = revived.state().rulings.get(rulingId("r-grapple"));
+        return (
+          exported.includes("grappling in brief") && // frozen excerpt is in the record
+          c.excerpt === "grappling in brief" && // and survives recall
+          c.content === null && // deep corpus content unavailable store-absent
+          c.provenanceGap !== undefined &&
+          replayedRuling !== undefined &&
+          replayedRuling.cites.length === 1 &&
+          replayedRuling.cites[0]!.ruleId === "grapple" &&
+          replayedRuling.cites[0]!.version === "v1"
+        );
       },
     },
   ];

@@ -4,7 +4,7 @@
 
 import { Campaign, anchorId, artifactId, assertionIdAt, campaignId, operationId, rulingId, IDENTITY_EQUIVALENCE } from "../src/index.ts";
 import type { AnchorId, ArtifactId, AssertionId, GrantId, RulingId } from "../src/core/ids.ts";
-import type { AnchorRole, ArtifactLink, EstablishmentMode, Provenance, Stance, Uncertainty } from "../src/core/operations.ts";
+import type { AnchorRole, ArtifactLink, Citation, EstablishmentMode, Provenance, Stance, Uncertainty } from "../src/core/operations.ts";
 import type { Receipt } from "../src/index.ts";
 
 /** The AssertionId minted by an accepted operation. Throws on a rejected receipt. */
@@ -90,9 +90,9 @@ export function linkArtifact(c: Campaign, o: { actor: string; id: string; link: 
 
 export function establishRuling(
   c: Campaign,
-  o: { actor: string; id: string; scope: string; text: string; ruleRef?: string; anchors?: string[]; grant?: GrantId },
+  o: { actor: string; id: string; scope: string; text: string; cites?: Citation[]; precedenceOver?: string[]; anchors?: string[]; grant?: GrantId },
 ) {
-  return c.submit({ kind: "establish-ruling", operationId: oid(), actor: o.actor, grant: o.grant, ruling: rulingId(o.id), scope: o.scope, text: o.text, ruleRef: o.ruleRef, anchors: o.anchors?.map((a) => anchorId(a) as AnchorId) });
+  return c.submit({ kind: "establish-ruling", operationId: oid(), actor: o.actor, grant: o.grant, ruling: rulingId(o.id), scope: o.scope, text: o.text, cites: o.cites, precedenceOver: o.precedenceOver?.map((r) => rulingId(r) as RulingId), anchors: o.anchors?.map((a) => anchorId(a) as AnchorId) });
 }
 
 export const artifact = (id: string): ArtifactId => artifactId(id) as ArtifactId;

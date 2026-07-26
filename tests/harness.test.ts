@@ -30,6 +30,7 @@ const EXPECTED_KILLS: CatalogId[] = [
   "merge-on-alias",
   "container-provenance",
   "eager-cache-retention",
+  "live-rules-lookup",
 ];
 
 describe("acceptance harness", () => {

@@ -22,6 +22,7 @@ import {
   type Act,
   type AnchorRole,
   type ArtifactLink,
+  type Citation,
   type EstablishmentMode,
   type Operation,
   type Proposition,
@@ -103,12 +104,29 @@ export interface RulingRecord {
   actor: string;
   scope: string;
   text: string;
-  ruleRef: string | null;
+  /** Version-frozen citations backing the ruling. Frozen at authorship. */
+  cites: Citation[];
+  /** Other rulings this one declares precedence over, resolving cited-identity overlap. */
+  precedenceOver: RulingId[];
   /** Referential anchors within the ruling's scope, for scoped recall. */
   anchors: AnchorId[];
   provenance: Provenance;
   standing: Standing;
   standingReason: string | null;
+}
+
+/**
+ * A Corpus pin: the Source-store version adopted as what composes live for a source.
+ * Immutable versions; a re-pin prospectively supersedes by overwrite, since derived
+ * state at a snapshot already reflects only ops up to that position.
+ */
+export interface PinRecord {
+  source: string;
+  version: string;
+  pos: number;
+  actor: string;
+  effectiveFrom: number | null;
+  provenance: Provenance;
 }
 
 export interface CampaignState {
@@ -125,6 +143,10 @@ export interface CampaignState {
   artifacts: Map<ArtifactId, ArtifactRecord>;
   /** Normative items (campaign rulings), keyed by their stable id. */
   rulings: Map<RulingId, RulingRecord>;
+  /** Corpus pins, keyed by source: the version that composes live. */
+  pins: Map<string, PinRecord>;
+  /** Recorded citation dispositions, keyed by `${ruling}#${citation}`. */
+  reconciliations: Map<string, { disposition: "reconfirm" | "revise" | "retire"; pos: number }>;
 }
 
 const slotOf = (p: Proposition): string => `${p.subject}::${p.attribute}`;
@@ -140,6 +162,8 @@ export function emptyState(): CampaignState {
     establishmentBySlot: new Map(),
     artifacts: new Map(),
     rulings: new Map(),
+    pins: new Map(),
+    reconciliations: new Map(),
   };
 }
 
@@ -271,12 +295,42 @@ export function apply(st: CampaignState, { op, pos }: Accepted): void {
         actor: op.actor,
         scope: op.scope,
         text: op.text,
-        ruleRef: op.ruleRef ?? null,
+        cites: [...(op.cites ?? [])],
+        precedenceOver: [...(op.precedenceOver ?? [])],
         anchors: [...(op.anchors ?? [])],
         provenance: op.provenance ?? { introducedBy: op.actor },
         standing: "active",
         standingReason: null,
       });
+      return;
+    }
+    case "pin-corpus": {
+      // Prospective supersession by overwrite: derived state at a snapshot already
+      // reflects only operations up to that position, so a later pin never rewrites history.
+      st.pins.set(op.source, {
+        source: op.source,
+        version: op.version,
+        pos,
+        actor: op.actor,
+        effectiveFrom: op.effectiveFrom,
+        provenance: op.provenance ?? { introducedBy: op.actor },
+      });
+      return;
+    }
+    case "reconcile-citation": {
+      st.reconciliations.set(`${op.ruling}#${op.citation}`, { disposition: op.disposition, pos });
+      const rul = st.rulings.get(op.ruling);
+      if (!rul) return;
+      const cite = rul.cites[op.citation];
+      if (op.disposition === "revise" && op.newCitation) {
+        rul.cites[op.citation] = op.newCitation;
+      } else if (op.disposition === "reconfirm" && cite) {
+        // Re-freeze the citation to the version currently pinned for its source.
+        const pinned = st.pins.get(cite.source)?.version;
+        if (pinned) rul.cites[op.citation] = { ...cite, version: pinned };
+      }
+      // "retire" records the disposition only: the ruling stops relying on the
+      // citation, but the frozen array entry is preserved for inspection.
       return;
     }
   }
@@ -502,4 +556,18 @@ export function retractableAt(
     st.artifacts.get(target as ArtifactId) ??
     st.rulings.get(target as RulingId)
   );
+}
+
+/** The version currently pinned for a source, or null when the source is unpinned. */
+export function pinnedVersion(st: CampaignState, source: string): string | null {
+  return st.pins.get(source)?.version ?? null;
+}
+
+/** The recorded reconciliation disposition for a ruling's citation, or null. */
+export function citationDisposition(
+  st: CampaignState,
+  ruling: RulingId,
+  index: number,
+): { disposition: "reconfirm" | "revise" | "retire"; pos: number } | null {
+  return st.reconciliations.get(`${ruling}#${index}`) ?? null;
 }
